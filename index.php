@@ -6,6 +6,7 @@ declare(strict_types=1);
  * ECASH (이케쉬대부) - Single-file index.php
  * - Responsive landing page
  * - Contact / 상담신청 form with CSRF + validation + honeypot
+ * - Save inquiry to MySQL (PDO)
  * - Mail send (if configured) or fallback to file storage
  */
 
@@ -16,9 +17,46 @@ header('Referrer-Policy: strict-origin-when-cross-origin');
 // CSP는 환경에 따라 깨질 수 있어 기본은 완화. 운영 시 이미지/스크립트 정책을 맞춰 강화하세요.
 header("Content-Security-Policy: default-src 'self' 'unsafe-inline' https: data:;");
 
+/** HTML escape */
 function h(string $s): string
 {
     return htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+
+/**
+ * ===== DB CONFIG =====
+ * - 비밀번호(DB_PASS)는 직접 입력하세요.
+ * - 운영 시에는 코드에 직접 넣지 말고, 환경변수(.env)로 분리하는 것을 권장합니다.
+ */
+const DB_HOST = '49.247.29.76';
+const DB_NAME = 'cashhome';
+const DB_USER = 'lokia';
+const DB_PASS = ''; // <-- 여기에 비밀번호 입력하세요
+
+/**
+ * 개인정보처리방침 버전 (문서 수정 시 v2, v3로 올리세요)
+ */
+const PRIVACY_POLICY_VERSION = 'v1';
+
+/**
+ * PDO 연결을 함수로 제공 (호출해서 사용)
+ */
+function cashhome_pdo(): PDO
+{
+    static $pdo = null;
+    if ($pdo instanceof PDO) {
+        return $pdo;
+    }
+
+    $dsn = 'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4';
+
+    $pdo = new PDO($dsn, DB_USER, DB_PASS, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES => false,
+    ]);
+
+    return $pdo;
 }
 
 if (empty($_SESSION['csrf_token'])) {
@@ -70,76 +108,172 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Validate
             $errors = [];
-            if ($name === '' || mb_strlen($name) < 2) $errors[] = '성함을 2자 이상 입력해주세요.';
+            if ($name === '' || mb_strlen($name) < 2) {
+                $errors[] = '성함을 2자 이상 입력해주세요.';
+            }
+
             // 전화번호: 숫자/하이픈/공백 허용 후 숫자길이 체크
             $phoneDigits = preg_replace('/\D+/', '', $phone);
             if ($phoneDigits === null) $phoneDigits = '';
-            if ($phoneDigits === '' || strlen($phoneDigits) < 9 || strlen($phoneDigits) > 12) $errors[] = '연락처를 정확히 입력해주세요.';
-            // 금액(선택): 입력 시 숫자만
+            if ($phoneDigits === '' || strlen($phoneDigits) < 9 || strlen($phoneDigits) > 12) {
+                $errors[] = '연락처를 정확히 입력해주세요.';
+            }
+
+            // 금액(선택): 입력 시 숫자만 (표시 텍스트는 그대로 저장해도 되지만, 여기서는 입력 유효성만 체크)
             if ($amount !== '') {
                 $amountDigits = preg_replace('/\D+/', '', $amount);
-                if ($amountDigits === null || $amountDigits === '') $errors[] = '희망금액은 숫자로 입력해주세요.';
+                if ($amountDigits === null || $amountDigits === '') {
+                    $errors[] = '희망금액은 숫자로 입력해주세요.';
+                }
             }
-            if ($agree_privacy !== '1') $errors[] = '개인정보 수집·이용 동의(필수)에 체크해주세요.';
-            if (mb_strlen($memo) > 1000) $errors[] = '요청사항은 1000자 이하로 입력해주세요.';
+
+            // 개인정보 필수 동의
+            if ($agree_privacy !== '1') {
+                $errors[] = '개인정보 수집·이용 동의(필수)에 체크해주세요.';
+            }
+
+            if (mb_strlen($memo) > 1000) {
+                $errors[] = '요청사항은 1000자 이하로 입력해주세요.';
+            }
 
             if ($errors) {
                 $errorMsg = implode(' ', $errors);
             } else {
-                // Prepare message
+                // Prepare
                 $ts = date('Y-m-d H:i:s');
                 $ip = $_SERVER['REMOTE_ADDR'] ?? '';
                 $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
-                $payload = [
-                    'time' => $ts,
-                    'ip' => $ip,
-                    'user_agent' => $ua,
-                    'name' => $name,
-                    'phone' => $phone,
-                    'amount' => $amount,
-                    'purpose' => $purpose,
-                    'memo' => $memo,
-                    'agree_privacy' => $agree_privacy === '1' ? 'Y' : 'N',
-                    'agree_marketing' => $agree_marketing === '1' ? 'Y' : 'N',
-                ];
 
-                // ✅ 운영 시 여기 이메일을 실제 수신 메일로 변경
-                $to = 'your@email.com';
-                $subject = '[ECASH] 상담 신청 접수';
-                $bodyLines = [];
-                foreach ($payload as $k => $v) $bodyLines[] = strtoupper($k) . ': ' . $v;
-                $body = implode("\n", $bodyLines);
+                // ===== DB INSERT (cashhome_1000_inquiries) =====
+                // - 개인정보 동의 증적(버전/일시)을 함께 저장
+                $newId = null;
 
-                $sent = false;
+                try {
+                    $pdo = cashhome_pdo();
 
-                // mail() 사용 가능할 때만
-                if (function_exists('mail')) {
-                    $headers = "Content-Type: text/plain; charset=UTF-8\r\n";
-                    $headers .= "From: no-reply@{$_SERVER['HTTP_HOST']}\r\n";
-                    $sent = @mail($to, $subject, $body, $headers);
+                    // 동의 일시 (필수 동의는 항상 1이지만, 방어적으로 처리)
+                    $privacyAgreedAt = ($agree_privacy === '1') ? $ts : null;
+                    $marketingAgreedAt = ($agree_marketing === '1') ? $ts : null;
+
+                    $stmt = $pdo->prepare("
+                        INSERT INTO cashhome_1000_inquiries (
+                            cashhome_1000_created_at,
+                            cashhome_1000_user_ip,
+                            cashhome_1000_user_agent,
+                            cashhome_1000_customer_name,
+                            cashhome_1000_customer_phone,
+                            cashhome_1000_loan_amount,
+                            cashhome_1000_loan_purpose,
+                            cashhome_1000_request_memo,
+                            cashhome_1000_agree_privacy,
+                            cashhome_1000_privacy_policy_version,
+                            cashhome_1000_privacy_agreed_at,
+                            cashhome_1000_agree_marketing,
+                            cashhome_1000_marketing_agreed_at,
+                            cashhome_1000_status
+                        ) VALUES (
+                            :created_at,
+                            :user_ip,
+                            :user_agent,
+                            :customer_name,
+                            :customer_phone,
+                            :loan_amount,
+                            :loan_purpose,
+                            :request_memo,
+                            :agree_privacy,
+                            :privacy_policy_version,
+                            :privacy_agreed_at,
+                            :agree_marketing,
+                            :marketing_agreed_at,
+                            :status
+                        )
+                    ");
+
+                    $stmt->execute([
+                        ':created_at' => $ts,
+                        ':user_ip' => $ip !== '' ? $ip : null,
+                        ':user_agent' => $ua !== '' ? mb_substr($ua, 0, 255) : null,
+
+                        ':customer_name' => $name,
+                        ':customer_phone' => $phone,
+
+                        // 선택값은 비어있으면 NULL 저장
+                        ':loan_amount' => $amount !== '' ? $amount : null,
+                        ':loan_purpose' => $purpose !== '' ? $purpose : null,
+                        ':request_memo' => $memo !== '' ? $memo : null,
+
+                        ':agree_privacy' => 1,
+                        ':privacy_policy_version' => PRIVACY_POLICY_VERSION,
+                        ':privacy_agreed_at' => $privacyAgreedAt,
+
+                        ':agree_marketing' => ($agree_marketing === '1') ? 1 : 0,
+                        ':marketing_agreed_at' => $marketingAgreedAt,
+
+                        ':status' => 'new',
+                    ]);
+
+                    $newId = (int)$pdo->lastInsertId();
+                } catch (Throwable $e) {
+                    error_log('[DB INSERT ERROR] ' . $e->getMessage());
+                    $errorMsg = '일시적인 오류로 접수가 완료되지 않았습니다. 잠시 후 다시 시도해주세요.';
                 }
 
-                // Fallback: 파일 저장 (서버 메일 미설정 대비)
-                if (!$sent) {
-                    $dir = __DIR__ . '/data';
-                    if (!is_dir($dir)) @mkdir($dir, 0755, true);
-                    $file = $dir . '/inquiries-' . date('Y-m') . '.log';
-                    $line = json_encode($payload, JSON_UNESCAPED_UNICODE) . PHP_EOL;
-                    @file_put_contents($file, $line, FILE_APPEND | LOCK_EX);
-                }
+                // DB 저장 성공시에만 알림(메일/파일) 진행
+                if ($errorMsg === '') {
+                    $payload = [
+                        'time' => $ts,
+                        'db_id' => $newId,
+                        'ip' => $ip,
+                        'user_agent' => $ua,
+                        'name' => $name,
+                        'phone' => $phone,
+                        'amount' => $amount,
+                        'purpose' => $purpose,
+                        'memo' => $memo,
+                        'privacy_policy_version' => PRIVACY_POLICY_VERSION,
+                        'agree_privacy' => 'Y',
+                        'agree_marketing' => $agree_marketing === '1' ? 'Y' : 'N',
+                    ];
 
-                // Rotate CSRF
-                $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-                $successMsg = '상담 신청이 접수되었습니다. 담당자가 확인 후 연락드리겠습니다.';
-                $old = [
-                    'name' => '',
-                    'phone' => '',
-                    'amount' => '',
-                    'purpose' => '',
-                    'memo' => '',
-                    'agree_privacy' => '',
-                    'agree_marketing' => '',
-                ];
+                    // ✅ 운영 시 여기 이메일을 실제 수신 메일로 변경
+                    $to = 'your@email.com';
+                    $subject = '[ECASH] 상담 신청 접수';
+                    $bodyLines = [];
+                    foreach ($payload as $k => $v) $bodyLines[] = strtoupper($k) . ': ' . $v;
+                    $body = implode("\n", $bodyLines);
+
+                    $sent = false;
+
+                    // mail() 사용 가능할 때만
+                    if (function_exists('mail')) {
+                        $headers = "Content-Type: text/plain; charset=UTF-8\r\n";
+                        $headers .= "From: no-reply@{$_SERVER['HTTP_HOST']}\r\n";
+                        $sent = @mail($to, $subject, $body, $headers);
+                    }
+
+                    // Fallback: 파일 저장 (서버 메일 미설정 대비)
+                    if (!$sent) {
+                        $dir = __DIR__ . '/data';
+                        if (!is_dir($dir)) @mkdir($dir, 0755, true);
+                        $file = $dir . '/inquiries-' . date('Y-m') . '.log';
+                        $line = json_encode($payload, JSON_UNESCAPED_UNICODE) . PHP_EOL;
+                        @file_put_contents($file, $line, FILE_APPEND | LOCK_EX);
+                    }
+
+                    // Rotate CSRF
+                    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+
+                    $successMsg = '상담 신청이 접수되었습니다. 담당자가 확인 후 연락드리겠습니다.';
+                    $old = [
+                        'name' => '',
+                        'phone' => '',
+                        'amount' => '',
+                        'purpose' => '',
+                        'memo' => '',
+                        'agree_privacy' => '',
+                        'agree_marketing' => '',
+                    ];
+                }
             }
         }
     }
@@ -149,7 +283,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $brandKr = '이케쉬대부';
 $brandEn = 'ECASH';
 
-// ✅ 아래 값들은 실제 정보로 교체 필수
+// ✅ 요청 반영: 전화번호/주소 업데이트
 $companyInfo = [
     '상호' => $brandKr,
     '영문' => $brandEn,
@@ -157,8 +291,8 @@ $companyInfo = [
     '사업자등록번호' => '000-00-00000',
     '대부업등록번호' => '제0000-대부-0000호',
     '등록기관' => '○○시청(또는 금융감독원 등록 현황 기준)',
-    '주소' => '서울특별시 ○○구 ○○로 00, 0층',
-    '대표전화' => '02-0000-0000',
+    '주소' => '충남 천안시 동남구 봉명동 9번지',
+    '대표전화' => '010-5651-0030',
     '운영시간' => '평일 09:00 ~ 18:00 (주말/공휴일 휴무)',
 ];
 
@@ -828,6 +962,8 @@ $disclosure = [
 
                     <form method="post" action="#apply" autocomplete="on" novalidate>
                         <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>" />
+                        <input type="hidden" name="privacy_policy_version" value="<?= h(PRIVACY_POLICY_VERSION) ?>" />
+
                         <!-- Honeypot -->
                         <input type="text" name="company_website" value="" tabindex="-1" autocomplete="off"
                             style="position:absolute; left:-9999px; width:1px; height:1px;" aria-hidden="true" />
@@ -876,7 +1012,10 @@ $disclosure = [
                                 <input id="agree_privacy" name="agree_privacy" type="checkbox" value="1"
                                     <?= $old['agree_privacy'] === '1' ? 'checked' : '' ?> />
                                 <div>
-                                    <label for="agree_privacy" style="color:var(--text); font-weight:800;">개인정보 수집·이용 동의 (필수)</label>
+                                    <label for="agree_privacy" style="color:var(--text); font-weight:800;">
+                                        개인정보 수집·이용 동의 (필수)
+                                        <span class="tiny">(<?= h(PRIVACY_POLICY_VERSION) ?>)</span>
+                                    </label>
                                     <small>상담 진행을 위해 성함/연락처/상담내용을 수집하며, 목적 달성 후 보관기간에 따라 파기합니다.</small>
                                 </div>
                             </div>
