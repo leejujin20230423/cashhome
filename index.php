@@ -31,7 +31,7 @@ function h(string $s): string
 const DB_HOST = '49.247.29.76';
 const DB_NAME = 'cashhome';
 const DB_USER = 'lokia';
-const DB_PASS = ''; // <-- 여기에 비밀번호 입력하세요
+const DB_PASS = 'lokia0528**'; // <-- 여기에 비밀번호 입력하세요
 
 /**
  * 개인정보처리방침 버전 (문서 수정 시 v2, v3로 올리세요)
