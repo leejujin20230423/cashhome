@@ -379,7 +379,7 @@ $disclosure = [
  *   예: /images/ecash-icon.png
  * - 지금은 "아이콘 준비됨" 기준으로 경로만 연결해둡니다.
  */
-$logoImg = '/images/ecash_icon_512.png';
+$logoImg = '/cashhome_icon/ecash_icon_512.png';
 ?>
 <!doctype html>
 <html lang="ko">
@@ -464,17 +464,22 @@ $logoImg = '/images/ecash_icon_512.png';
         }
 
         /* ✅ 로고 박스 (기존 E 대신 이미지) */
+        /* 헤더 로고 박스 */
         .logo {
-            width: 40px;
-            height: 40px;
+            width: 50px;
+            /* 원하는 크기 */
+            height: 50px;
             border-radius: 14px;
-            box-shadow: var(--shadow);
             overflow: hidden;
-            /* 이미지 모서리 둥글게 */
-            background: rgba(255, 255, 255, .06);
-            border: 1px solid rgba(234, 240, 255, .10);
-            display: grid;
-            place-items: center;
+            /* 둥근 모서리 유지 */
+            background: none;
+            /* ✅ 배경 제거 */
+            border: 0;
+            /* ✅ 테두리 제거 */
+            box-shadow: none;
+            /* 필요 없으면 제거 */
+            padding: 0;
+            /* ✅ 이거 중요 */
         }
 
         .logo img {
@@ -482,7 +487,9 @@ $logoImg = '/images/ecash_icon_512.png';
             height: 100%;
             display: block;
             object-fit: cover;
-            /* 아이콘이 꽉 차게 */
+            /* ✅ 꽉 차게 */
+            padding: 0;
+            /* ✅ 여백 제거 */
         }
 
         .brand strong {
