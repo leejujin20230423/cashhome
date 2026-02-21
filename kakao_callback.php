@@ -1,6 +1,12 @@
 <?php
 declare(strict_types=1);
 
+header('Content-Type: text/plain; charset=utf-8');
+echo "FULL URL: " . (($_SERVER['REQUEST_SCHEME'] ?? '') . '://' . ($_SERVER['HTTP_HOST'] ?? '') . ($_SERVER['REQUEST_URI'] ?? '')) . "\n\n";
+echo "GET:\n";
+print_r($_GET);
+exit;
+
 /**
  * kakao_callback.php
  * - 카카오에서 돌아오면 토큰 발급 -> /v2/user/me 조회
