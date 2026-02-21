@@ -2,16 +2,10 @@
 
 declare(strict_types=1);
 
+/**
+ * index.php (전체)
+ */
 
-//  * index.php (전체)
-//  * - 랜딩 + 상담신청
-//  * - 카카오 로그인 후 세션(kakao_profile) 값으로 성함/연락처 자동 주입
-//  * - 디버그: kakao_ok 알럿에 PHP 값 + 실제 input DOM 값까지 같이 표시
-//  */
-
-/* =========================================================
- * ✅ 세션 부트스트랩 (kakao_login / kakao_callback 과 동일하게)
- * ========================================================= */
 $isHttps = (
     (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
     || (!empty($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443)
@@ -21,8 +15,6 @@ $isHttps = (
 session_set_cookie_params([
     'lifetime' => 0,
     'path' => '/',
-    // 필요하면 도메인 고정 (서브도메인 공유 필요 시 .bizstore.co.kr)
-    // 'domain' => 'cashhome.bizstore.co.kr',
     'secure' => $isHttps,
     'httponly' => true,
     'samesite' => 'Lax',
@@ -30,9 +22,6 @@ session_set_cookie_params([
 
 session_start();
 
-/* =========================================================
- * reset
- * ========================================================= */
 if (!empty($_GET['reset'])) {
     unset(
         $_SESSION['cashhome_inquiry_draft'],
@@ -44,9 +33,6 @@ if (!empty($_GET['reset'])) {
     exit;
 }
 
-/* =========================================================
- * security headers
- * ========================================================= */
 header('X-Frame-Options: SAMEORIGIN');
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: strict-origin-when-cross-origin');
@@ -57,16 +43,11 @@ function h(string $s): string
     return htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
-/**
- * ===== DB CONFIG =====
- * (사용자 제공 그대로 유지)
- */
 const DB_HOST = '49.247.29.76';
 const DB_NAME = 'cashhome';
 const DB_USER = 'lokia';
 const DB_PASS = 'lokia0528**';
 
-/** 개인정보처리방침 버전 */
 const PRIVACY_POLICY_VERSION = 'v1';
 
 function cashhome_pdo(): PDO
@@ -83,9 +64,6 @@ function cashhome_pdo(): PDO
     return $pdo;
 }
 
-/**
- * ✅ 동의 완료 여부(세션 기반)
- */
 function cashhome_consent_ok(): bool
 {
     if (empty($_SESSION['cashhome_consent']) || !is_array($_SESSION['cashhome_consent'])) return false;
@@ -105,9 +83,6 @@ function cashhome_consent_ok(): bool
     return (($hasPrivacyAt && $hasMarketingAt && $hasPrivacyVer && $hasMarketingVer) || $hasLegacy);
 }
 
-/**
- * ✅ 입력값 검증
- */
 function validate_inquiry_input(array $in): array
 {
     $name = trim((string)($in['name'] ?? ''));
@@ -145,7 +120,6 @@ function validate_inquiry_input(array $in): array
     ]];
 }
 
-/* CSRF */
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
@@ -155,9 +129,6 @@ $consentOk = cashhome_consent_ok();
 $successMsg = '';
 $errorMsg = '';
 
-/* =========================================================
- * ✅ draft (입력값 유지)
- * ========================================================= */
 $draft = $_SESSION['cashhome_inquiry_draft'] ?? null;
 
 $old = [
@@ -168,11 +139,8 @@ $old = [
     'memo' => is_array($draft) ? (string)($draft['memo'] ?? '') : '',
 ];
 
-/* =========================================================
- * ✅ 카카오 자동입력 (핵심)
- * ========================================================= */
 $kakaoErr = (string)($_GET['kakao_error'] ?? '');
-$kakaoOk = !empty($_GET['kakao_ok']); // 리다이렉트에 붙은 플래그
+$kakaoOk = !empty($_GET['kakao_ok']);
 
 $kName = '';
 $kPhone = '';
@@ -183,18 +151,14 @@ if (!empty($_SESSION['kakao_profile']) && is_array($_SESSION['kakao_profile'])) 
     $kName  = trim((string)($kp['nickname'] ?? ''));
     $kPhone = trim((string)($kp['phone_number'] ?? ''));
 
-    // ✅ '.' 같은 이상값 방지
     if ($kName === '.' || $kName === '·') $kName = '';
 
-    // ✅ 카카오 값이 있으면 무조건 우선 적용
     if ($kName !== '') $old['name'] = $kName;
     if ($kPhone !== '') $old['phone'] = $kPhone;
 
-    // ✅ draft 세션에도 반영(새로고침/동의 이동 대비)
     $_SESSION['cashhome_inquiry_draft'] = $old;
 }
 
-/* ✅ name에 '.' 박혀있는 경우 제거 */
 if (($old['name'] ?? '') === '.' || ($old['name'] ?? '') === '·') {
     $old['name'] = '';
     if (is_array($_SESSION['cashhome_inquiry_draft'] ?? null)) {
@@ -204,9 +168,6 @@ if (($old['name'] ?? '') === '.' || ($old['name'] ?? '') === '·') {
 
 $kakaoOkMsg = $kakaoOk ? '카카오 로그인 완료! 성함이 자동 입력되었습니다.' : '';
 
-/* =========================================================
- * ✅ 사전검증(preconsent) AJAX
- * ========================================================= */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') === 'preconsent') {
     header('Content-Type: application/json; charset=utf-8');
 
@@ -228,9 +189,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
     exit;
 }
 
-/* =========================================================
- * ✅ 최종 접수 처리
- * ========================================================= */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !== 'preconsent') {
 
     $hp = trim((string)($_POST['company_website'] ?? ''));
@@ -280,8 +238,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
                 if ($privacyAt === '' && !empty($consent['consented_at'])) $privacyAt = (string)$consent['consented_at'];
                 if ($marketingAt === '' && !empty($consent['consented_at'])) $marketingAt = (string)$consent['consented_at'];
                 if ($privacyVer === '' && !empty($consent['version'])) $privacyVer = (string)$consent['version'];
-
-                $newId = null;
 
                 try {
                     $pdo = cashhome_pdo();
@@ -398,9 +354,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
     }
 }
 
-/* =========================================================
- * DISPLAY DATA
- * ========================================================= */
 $brandKr = '이케쉬대부';
 $brandEn = 'ECASH';
 
@@ -428,11 +381,6 @@ $disclosure = [
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0B1220" />
     <title><?= h($brandEn) ?> | <?= h($brandKr) ?> - 빠르고 간편한 상담</title>
-    <meta name="description" content="<?= h($brandEn) ?>(<?= h($brandKr) ?>) 대출 상담/상담신청. 빠르고 정확한 안내를 제공합니다." />
-    <meta name="robots" content="index,follow" />
-    <meta property="og:title" content="<?= h($brandEn) ?> | <?= h($brandKr) ?>" />
-    <meta property="og:description" content="빠르고 간편한 상담신청. 담당자가 확인 후 연락드립니다." />
-    <meta property="og:type" content="website" />
 
     <style>
         :root {
@@ -565,6 +513,24 @@ $disclosure = [
             border: 0;
             cursor: pointer;
             white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btnGhost {
+            background: transparent;
+            border: 1px solid var(--line);
+            color: var(--text);
+            padding: 10px 14px;
+            border-radius: 999px;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 13px;
+        }
+
+        .btnGhost:hover {
+            background: rgba(255, 255, 255, .05);
         }
 
         .hero {
@@ -660,21 +626,6 @@ $disclosure = [
             display: flex;
             gap: 10px;
             flex-wrap: wrap;
-        }
-
-        .btnGhost {
-            background: transparent;
-            border: 1px solid var(--line);
-            color: var(--text);
-            padding: 10px 14px;
-            border-radius: 999px;
-            text-decoration: none;
-            font-weight: 700;
-            font-size: 13px;
-        }
-
-        .btnGhost:hover {
-            background: rgba(255, 255, 255, .05);
         }
 
         .heroR {
@@ -827,10 +778,6 @@ $disclosure = [
             transform: translateY(-1px);
             background: rgba(255, 255, 255, .05);
             border-color: rgba(234, 240, 255, .18);
-        }
-
-        .consentCard:active {
-            transform: translateY(0px);
         }
 
         .consentIcon {
@@ -1010,7 +957,9 @@ $disclosure = [
             font-weight: 800;
             font-size: 13px;
             text-decoration: none;
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             border: 0;
             cursor: pointer;
             transition: all .18s ease;
@@ -1029,6 +978,28 @@ $disclosure = [
         .kakao-btn:active {
             transform: translateY(0px);
             box-shadow: 0 6px 16px rgba(0, 0, 0, .25);
+        }
+
+        /* ✅ 핵심: 버튼 3개를 가로로 한 줄 */
+        .action-row {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+            /* 모바일에서는 줄바꿈 */
+            margin-top: 10px;
+        }
+
+        .action-row>* {
+            margin: 0 !important;
+            /* 내부 div 마진 때문에 위로 뜨는 현상 방지 */
+        }
+
+        /* ✅ 카카오 잠금 */
+        .kakao-disabled {
+            opacity: .55;
+            filter: grayscale(20%);
+            pointer-events: none;
         }
 
         @media (max-width: 920px) {
@@ -1225,7 +1196,6 @@ COOKIE(PHPSESSID):
                     <form id="applyForm" method="post" action="#apply" autocomplete="on" novalidate>
                         <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>" />
 
-                        <!-- Honeypot -->
                         <input type="text" name="company_website" value="" tabindex="-1" autocomplete="off"
                             style="position:absolute; left:-9999px; width:1px; height:1px;"
                             aria-hidden="true" />
@@ -1316,27 +1286,26 @@ COOKIE(PHPSESSID):
                                 <div class="arrow" aria-hidden="true">›</div>
                             </div>
 
-                            <?php if (!$consentOk): ?>
-                                <div style="margin-top:6px;">
-                                    <a class="cta" href="#" id="goConsentBtn" style="display:inline-block;">동의하러 가기</a>
-                                </div>
-                            <?php endif; ?>
-                        </div>
+                            <!-- ✅ 버튼 3개: 가로 한 줄 (중첩 div 제거) -->
+                            <div class="action-row">
+                                <?php if (!$consentOk): ?>
+                                    <a class="cta" href="#" id="goConsentBtn">동의하러 가기</a>
+                                <?php endif; ?>
 
-                        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                            <a href="javascript:void(0);"
-                                class="kakao-btn kakao-disabled"
-                                onclick="alert('현재 카카오 1초접수는 준비 중입니다.'); return false;">
-                                🔒 카카오 1초접수 (준비중)
-                            </a>
+                                <button class="cta" type="submit" <?= $consentOk ? '' : 'disabled' ?>>
+                                    상담 신청 접수
+                                </button>
 
-                            <button class="cta" type="submit" <?= $consentOk ? '' : 'disabled' ?>>
-                                상담 신청 접수
-                            </button>
-                        </div>
+                                <a href="javascript:void(0);"
+                                    class="kakao-btn kakao-disabled"
+                                    onclick="alert('현재 카카오 1초접수는 준비 중입니다.'); return false;">
+                                    🔒 카카오 1초접수 (준비중)
+                                </a>
+                            </div>
 
-                        <div class="tiny">
-                            ※ 입력 오류가 있으면 팝업으로 안내됩니다. 동의는 입력 완료 후 진행됩니다.
+                            <div class="tiny">
+                                ※ 입력 오류가 있으면 팝업으로 안내됩니다. 동의는 입력 완료 후 진행됩니다.
+                            </div>
                         </div>
                     </form>
                 </div>
@@ -1389,9 +1358,6 @@ COOKIE(PHPSESSID):
     <button class="topbtn" id="topbtn" type="button" aria-label="맨 위로">↑</button>
 
     <script>
-        /* =========================================================
-         * ✅ 서버 메시지 + 카카오 디버그 alert (PHP값 + DOM input값)
-         * ========================================================= */
         (function() {
             const err = <?= json_encode($errorMsg ?? '', JSON_UNESCAPED_UNICODE) ?>;
             const ok = <?= json_encode($successMsg ?? '', JSON_UNESCAPED_UNICODE) ?>;
@@ -1406,9 +1372,7 @@ COOKIE(PHPSESSID):
             if (ok) alert(ok);
             if (kerr) alert(kerr);
 
-            // ✅ kakao_ok가 있을 때: PHP에 들어온 값 + 실제 input 값까지 같이 보여줌
             if (kok) {
-                // DOM이 아직 안 만들어졌을 수 있어서 0ms로 한번 늦춤
                 setTimeout(() => {
                     const inputName = document.getElementById('name');
                     const inputPhone = document.getElementById('phone');
@@ -1427,7 +1391,6 @@ COOKIE(PHPSESSID):
             }
         })();
 
-        /* Smooth scroll */
         document.querySelectorAll('a[href^="#"]').forEach(a => {
             a.addEventListener('click', (e) => {
                 const id = a.getAttribute('href');
@@ -1443,7 +1406,6 @@ COOKIE(PHPSESSID):
             });
         });
 
-        /* Top button */
         const topBtn = document.getElementById('topbtn');
         const onScroll = () => {
             if (topBtn) topBtn.style.display = (window.scrollY > 600) ? 'block' : 'none';
@@ -1457,7 +1419,6 @@ COOKIE(PHPSESSID):
         }));
         onScroll();
 
-        /* 전화번호 하이픈 자동 포맷 */
         (function() {
             const phoneEl = document.getElementById('phone');
             if (!phoneEl) return;
@@ -1491,7 +1452,6 @@ COOKIE(PHPSESSID):
             onInput();
         })();
 
-        /* 동의 이동 전 사전검증 */
         const form = document.getElementById('applyForm');
 
         async function preConsentAndGo() {
@@ -1546,6 +1506,7 @@ COOKIE(PHPSESSID):
             }
         });
     </script>
+
 </body>
 
 </html>
