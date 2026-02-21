@@ -221,7 +221,6 @@ function compute_stats(array $rows): array
 
     $rate = $total > 0 ? round(($approved / $total) * 100, 1) : 0.0;
 
-    // 그래프 레이블 통합(빈날 0 보정)
     $labels = array_keys($dailyAll);
     $allSeries = [];
     $apprSeries = [];
@@ -303,7 +302,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
         exit;
     }
 
-    // processed_at: 승인/부결이면 NOW, 대기면 NULL (원하면 유지로 바꿀 수 있음)
     $processedAt = null;
     if ($outcome !== 'pending') $processedAt = date('Y-m-d H:i:s');
 
@@ -326,7 +324,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
             ':id' => $id,
         ]);
 
-        // CSRF rotate
         $_SESSION['csrf_token_admin'] = bin2hex(random_bytes(32));
 
         echo json_encode([
@@ -343,18 +340,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
     }
 }
 
-// ===== AJAX: 리스트/통계 갱신(리로드 없이) =====
+// ===== AJAX =====
 if (isset($_GET['ajax']) && $_GET['ajax'] === '1') {
     header('Content-Type: application/json; charset=utf-8');
     try {
         $rows = fetch_rows($pdo, $f);
         $stats = compute_stats($rows);
 
-        // 선택 id: 요청이 있으면 유지, 없으면 첫 항목
         $selectedId = (int)($_GET['id'] ?? 0);
         if ($selectedId <= 0 && !empty($rows)) $selectedId = (int)$rows[0]['cashhome_1000_id'];
 
-        // 선택 상세(같은 rows에서 찾기)
         $selected = null;
         foreach ($rows as $r) {
             if ((int)$r['cashhome_1000_id'] === $selectedId) {
@@ -389,13 +384,51 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === '1') {
 }
 
 // ===== 엑셀 다운로드(CSV) =====
+// ===== 엑셀 다운로드(CSV) =====
 if (isset($_GET['excel']) && $_GET['excel'] === '1') {
+    // ✅ CSV 출력에서는 에러/경고가 섞이면 파일이 깨집니다.
+    //    (Deprecated 같은 것들이 <br>로 출력되어 CSV가 웹페이지처럼 보임)
+    ini_set('display_errors', '0');
+    ini_set('html_errors', '0');
+    // Deprecated만 숨기고 싶으면 아래처럼 (원하면 E_WARNING도 빼지 마세요)
+    error_reporting(E_ALL & ~E_DEPRECATED);
+
+    // 혹시 이전에 출력 버퍼가 잡혀있으면 정리 (헤더/CSV 깨짐 방지)
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
     [$where, $params] = build_where_and_params($f);
 
-    header("Content-Type: text/csv; charset=UTF-8");
-    header("Content-Disposition: attachment; filename=inquiries_" . $f['start'] . "_to_" . $f['end'] . ".csv");
-    // UTF-8 BOM (엑셀 한글 깨짐 방지)
+    header('Content-Type: text/csv; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="inquiries_' . $f['start'] . '_to_' . $f['end'] . '.csv"');
+    header('Pragma: no-cache');
+    header('Expires: 0');
+
+    // ✅ 엑셀 한글 깨짐 방지(BOM)
     echo "\xEF\xBB\xBF";
+
+    $columns = [
+        'cashhome_1000_id' => '접수번호',
+        'cashhome_1000_created_at' => '접수일시',
+        'cashhome_1000_updated_at' => '수정일시',
+        'cashhome_1000_customer_name' => '신청자명',
+        'cashhome_1000_customer_phone' => '연락처',
+        'cashhome_1000_loan_amount' => '희망금액',
+        'cashhome_1000_loan_purpose' => '자금용도',
+        'cashhome_1000_request_memo' => '요청사항',
+        'cashhome_1000_user_ip' => 'IP',
+        'cashhome_1000_user_agent' => '브라우저정보',
+        'cashhome_1000_agree_privacy' => '개인정보동의',
+        'cashhome_1000_privacy_policy_version' => '개인정보동의버전',
+        'cashhome_1000_privacy_agreed_at' => '개인정보동의일시',
+        'cashhome_1000_agree_marketing' => '마케팅동의',
+        'cashhome_1000_marketing_agreed_at' => '마케팅동의일시',
+        'cashhome_1000_status' => '처리상태',
+        'cashhome_1000_outcome' => '대출결과',
+        'cashhome_1000_processed_at' => '처리일시',
+        'cashhome_1000_admin_note' => '관리자메모',
+    ];
 
     $sql = "
       SELECT
@@ -428,20 +461,25 @@ if (isset($_GET['excel']) && $_GET['excel'] === '1') {
     $stmt->execute($params);
 
     $out = fopen('php://output', 'w');
-    $headerWritten = false;
+
+    // ✅ 여기서 Deprecated 해결 포인트: 5번째 인자 escape를 명시
+    // fputcsv($out, array_values($columns));  // (기존)
+    fputcsv($out, array_values($columns), ',', '"', '\\');
 
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        if (!$headerWritten) {
-            fputcsv($out, array_keys($row));
-            $headerWritten = true;
+        $line = [];
+        foreach (array_keys($columns) as $k) {
+            $line[] = $row[$k] ?? '';
         }
-        fputcsv($out, $row);
+        // fputcsv($out, $line); // (기존)
+        fputcsv($out, $line, ',', '"', '\\');
     }
+
     fclose($out);
     exit;
 }
 
-// ===== 초기 화면 렌더(SSR) =====
+// ===== 초기 화면 렌더 =====
 $error = '';
 $rows = [];
 $selected = null;
@@ -476,6 +514,7 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
     <meta name="robots" content="noindex,nofollow" />
     <title>접수이력</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <style>
         :root {
             --bg: #0B1220;
@@ -490,11 +529,8 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
             --r2: 22px;
 
             --pending: #FBBF24;
-            /* amber */
             --approved: #22C55E;
-            /* green */
             --rejected: #EF4444;
-            /* red */
             --accent: #6EE7FF;
             --accent2: #A78BFA;
         }
@@ -669,6 +705,11 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
             margin-top: 2px;
         }
 
+        .hint {
+            color: var(--muted);
+            font-size: 12px
+        }
+
         @media (max-width: 1200px) {
             .filters {
                 grid-template-columns: 1fr 1fr 1fr 1fr;
@@ -685,7 +726,7 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
             }
         }
 
-        /* 통계 카드 */
+        /* ✅ 통계(아래로) */
         .statsGrid {
             margin-top: 12px;
             display: grid;
@@ -771,13 +812,13 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
             height: 260px !important
         }
 
-        /* 본문 2열 */
+        /* ✅ 레이아웃 (겹침 방지: height 강제 제거) */
         .layout {
             margin-top: 12px;
             display: grid;
             grid-template-columns: 430px 1fr;
             gap: 12px;
-            min-height: calc(100vh - 420px);
+            align-items: start;
         }
 
         @media (max-width: 1100px) {
@@ -794,7 +835,6 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
             overflow: hidden;
             display: flex;
             flex-direction: column;
-            min-height: 420px;
         }
 
         .panelHead {
@@ -816,10 +856,9 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
             font-size: 12px
         }
 
-        /* 리스트 */
+        /* ✅ 리스트: JS가 max-height 자동 계산, 여기서는 스크롤만 */
         .list {
             overflow: auto;
-            max-height: calc(100vh - 440px);
         }
 
         .item {
@@ -936,11 +975,11 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
             color: #BFF7D3
         }
 
-        /* 상세 */
+        /* ✅ 상세: 스크롤 제거 */
         .detailBody {
             padding: 14px;
-            overflow: auto;
-            max-height: calc(100vh - 440px);
+            overflow: visible;
+            max-height: none;
         }
 
         .detailTitle {
@@ -1004,11 +1043,6 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
             flex-wrap: wrap;
             align-items: center;
             justify-content: flex-start;
-        }
-
-        .hint {
-            color: var(--muted);
-            font-size: 12px
         }
 
         .callBtn {
@@ -1114,41 +1148,8 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
             </div>
         </form>
 
-        <!-- 통계 -->
-        <div class="statsGrid">
-            <div class="statCard">
-                <div class="statTitle">
-                    <b>요약</b>
-                    <span class="hint">조회기간: <span id="rangeText"><?= h($f['start']) ?> ~ <?= h($f['end']) ?></span></span>
-                </div>
-                <div class="statNums" id="statNums">
-                    <span class="pill pending">대기 <span id="statPending"><?= h((string)$stats['pending']) ?></span></span>
-                    <span class="pill approved">승인 <span id="statApproved"><?= h((string)$stats['approved']) ?></span></span>
-                    <span class="pill rejected">부결 <span id="statRejected"><?= h((string)$stats['rejected']) ?></span></span>
-                    <span class="pill rate">승인율 <span id="statRate"><?= h((string)$stats['rate']) ?>%</span></span>
-                </div>
-            </div>
-
-            <div class="statCard">
-                <div class="statTitle">
-                    <b>기간별 접수</b><span class="hint">일자 기준</span>
-                </div>
-                <div class="chartWrap">
-                    <canvas id="chartAll"></canvas>
-                </div>
-            </div>
-
-            <div class="statCard">
-                <div class="statTitle">
-                    <b>기간별 승인</b><span class="hint">일자 기준</span>
-                </div>
-                <div class="chartWrap">
-                    <canvas id="chartApproved"></canvas>
-                </div>
-            </div>
-        </div>
-
-        <div class="layout">
+        <!-- ✅ 리스트 + 상세 -->
+        <div class="layout" id="layoutBox">
             <!-- 좌측 리스트 -->
             <div class="panel">
                 <div class="panelHead">
@@ -1171,16 +1172,6 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
                         $oc = (string)($r['cashhome_1000_outcome'] ?? 'pending');
 
                         $ocClass = $oc === 'approved' ? 'approved' : ($oc === 'rejected' ? 'rejected' : 'pending');
-                        $qs = http_build_query([
-                            'start' => $f['start'],
-                            'end' => $f['end'],
-                            'status' => $f['status'],
-                            'outcome' => $f['outcome'],
-                            'name' => $f['name'],
-                            'memo' => $f['memo'],
-                            'note' => $f['note'],
-                            'id' => $id,
-                        ]);
                         ?>
                         <div class="item <?= $on ? 'on' : '' ?>" data-id="<?= h((string)$id) ?>">
                             <div class="row1">
@@ -1311,19 +1302,47 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
                 </div>
             </div>
         </div>
+
+        <!-- ✅ 통계(그래프/요약) - 아래쪽 -->
+        <div class="statsGrid" id="statsGrid">
+            <div class="statCard">
+                <div class="statTitle">
+                    <b>요약</b>
+                    <span class="hint">조회기간: <span id="rangeText"><?= h($f['start']) ?> ~ <?= h($f['end']) ?></span></span>
+                </div>
+                <div class="statNums" id="statNums">
+                    <span class="pill pending">대기 <span id="statPending"><?= h((string)$stats['pending']) ?></span></span>
+                    <span class="pill approved">승인 <span id="statApproved"><?= h((string)$stats['approved']) ?></span></span>
+                    <span class="pill rejected">부결 <span id="statRejected"><?= h((string)$stats['rejected']) ?></span></span>
+                    <span class="pill rate">승인율 <span id="statRate"><?= h((string)$stats['rate']) ?>%</span></span>
+                </div>
+            </div>
+
+            <div class="statCard">
+                <div class="statTitle">
+                    <b>기간별 접수</b><span class="hint">일자 기준</span>
+                </div>
+                <div class="chartWrap">
+                    <canvas id="chartAll"></canvas>
+                </div>
+            </div>
+
+            <div class="statCard">
+                <div class="statTitle">
+                    <b>기간별 승인</b><span class="hint">일자 기준</span>
+                </div>
+                <div class="chartWrap">
+                    <canvas id="chartApproved"></canvas>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <script>
-        /**
-         * ✅ 핵심: 한글 1글자 입력 후 멈춤 문제 해결
-         * - 키워드 검색을 "리로드"로 처리하면 포커스가 튕겨서 발생
-         * - 그래서 키워드 입력은 fetch(ajax) + DOM 업데이트로 처리한다.
-         */
-
         (function() {
             const $ = (sel) => document.querySelector(sel);
 
-            const filtersForm = $('#filtersForm');
             const elStart = $('#start');
             const elEnd = $('#end');
             const elStatus = $('#status');
@@ -1349,6 +1368,30 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
             // Charts
             let chartAll = null;
             let chartApproved = null;
+
+            // ✅ 화면 높이에 따라 리스트 높이 자동 계산(겹침 방지 완전 자동)
+            function autoListHeight() {
+                const wrap = document.querySelector('.wrap');
+                const list = document.querySelector('#listBox');
+                if (!wrap || !list) return;
+
+                const rect = list.getBoundingClientRect();
+
+                // 뷰포트 아래쪽과의 여백
+                const bottomGap = 18;
+
+                // listBox(스크롤 영역) 상단부터 viewport 끝까지
+                const available = window.innerHeight - rect.top - bottomGap;
+
+                // 너무 작아지는 경우 안전값
+                const minH = 260;
+                const h = Math.max(minH, Math.floor(available));
+
+                list.style.maxHeight = h + 'px';
+            }
+
+            window.addEventListener('load', autoListHeight);
+            window.addEventListener('resize', autoListHeight);
 
             function outcomeClass(oc) {
                 if (oc === 'approved') return 'approved';
@@ -1391,6 +1434,15 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
                 excelBtn.setAttribute('href', 'admin_inquiries.php?' + q);
             }
 
+            function escapeHtml(s) {
+                return String(s)
+                    .replaceAll('&', '&amp;')
+                    .replaceAll('<', '&lt;')
+                    .replaceAll('>', '&gt;')
+                    .replaceAll('"', '&quot;')
+                    .replaceAll("'", "&#039;");
+            }
+
             function renderList(rows) {
                 listBox.innerHTML = '';
                 if (!rows || rows.length === 0) {
@@ -1400,6 +1452,7 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
                     div.style.fontSize = '12px';
                     div.textContent = '해당 조건에 접수 내역이 없습니다.';
                     listBox.appendChild(div);
+                    autoListHeight();
                     return;
                 }
 
@@ -1415,39 +1468,39 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
                     item.dataset.id = String(r.id);
 
                     item.innerHTML = `
-        <div class="row1">
-          <div class="name">${escapeHtml(r.name||'')}</div>
-          <div class="idchip">#${r.id}</div>
-        </div>
-        <div class="row2">
-          <span>${escapeHtml(r.created_at||'')}</span>
-          <span>·</span>
-          <span>${escapeHtml(r.phone||'')}</span>
-        </div>
-        <div class="chips">
-          <span class="badge ${outcomeClass(oc)}"><span class="dot"></span> ${outcomeLabel(oc)}</span>
-          <span class="badge status">상태: ${statusLabel(st)}</span>
-          <span class="badge consent ${pOk?'ok':''}">개인정보: ${pOk?'동의함':'미동의'}</span>
-          <span class="badge consent ${mOk?'ok':''}">마케팅: ${mOk?'동의함':'미동의'}</span>
-        </div>
-      `;
+                        <div class="row1">
+                          <div class="name">${escapeHtml(r.name||'')}</div>
+                          <div class="idchip">#${r.id}</div>
+                        </div>
+                        <div class="row2">
+                          <span>${escapeHtml(r.created_at||'')}</span>
+                          <span>·</span>
+                          <span>${escapeHtml(r.phone||'')}</span>
+                        </div>
+                        <div class="chips">
+                          <span class="badge ${outcomeClass(oc)}"><span class="dot"></span> ${outcomeLabel(oc)}</span>
+                          <span class="badge status">상태: ${statusLabel(st)}</span>
+                          <span class="badge consent ${pOk?'ok':''}">개인정보: ${pOk?'동의함':'미동의'}</span>
+                          <span class="badge consent ${mOk?'ok':''}">마케팅: ${mOk?'동의함':'미동의'}</span>
+                        </div>
+                    `;
 
                     item.addEventListener('click', () => {
                         selectedId = r.id;
-                        // 리스트 하이라이트
                         document.querySelectorAll('.item').forEach(x => x.classList.remove('on'));
                         item.classList.add('on');
-                        // url state
                         const q = buildQuery({
                             ajax: 0
                         });
                         history.replaceState(null, '', 'admin_inquiries.php?' + q);
-                        // 상세 갱신(전체 ajax 한번 더)
                         refresh(true);
                     });
 
                     listBox.appendChild(item);
                 });
+
+                // ✅ 리스트가 다시 렌더되면 높이 재계산
+                autoListHeight();
             }
 
             function renderStats(stats) {
@@ -1456,7 +1509,6 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
                 statRejected.textContent = String(stats.rejected ?? 0);
                 statRate.textContent = String(stats.rate ?? 0) + '%';
 
-                // 상단 승인 배지
                 const appr = Number(stats.approved ?? 0);
                 if (appr > 0) {
                     approvedTopBadge.style.display = 'inline-flex';
@@ -1465,7 +1517,6 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
                     approvedTopBadge.style.display = 'none';
                 }
 
-                // 차트 갱신
                 const labels = stats.labels || [];
                 const allSeries = stats.series_all || [];
                 const apprSeries = stats.series_approved || [];
@@ -1506,15 +1557,6 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
                 });
             }
 
-            function escapeHtml(s) {
-                return String(s)
-                    .replaceAll('&', '&amp;')
-                    .replaceAll('<', '&lt;')
-                    .replaceAll('>', '&gt;')
-                    .replaceAll('"', '&quot;')
-                    .replaceAll("'", "&#039;");
-            }
-
             function renderDetail(sel) {
                 const box = document.getElementById('detailBox');
                 if (!sel) {
@@ -1535,73 +1577,74 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
                 const note = sel.cashhome_1000_admin_note || '';
 
                 box.innerHTML = `
-      <h3 class="detailTitle">접수 정보</h3>
-      <div class="kv">
-        <div class="k">접수일시</div><div class="v">${escapeHtml(sel.cashhome_1000_created_at||'')}</div>
-        <div class="k">이름</div><div class="v">${escapeHtml(sel.cashhome_1000_customer_name||'')}</div>
-        <div class="k">연락처</div>
-        <div class="v">
-          ${escapeHtml(phone)}
-          ${tel ? `<div style="margin-top:8px;"><a class="callBtn" href="tel:${escapeHtml(tel)}">📞 전화걸기</a></div>` : ``}
-        </div>
+                    <h3 class="detailTitle">접수 정보</h3>
+                    <div class="kv">
+                      <div class="k">접수일시</div><div class="v">${escapeHtml(sel.cashhome_1000_created_at||'')}</div>
+                      <div class="k">이름</div><div class="v">${escapeHtml(sel.cashhome_1000_customer_name||'')}</div>
+                      <div class="k">연락처</div>
+                      <div class="v">
+                        ${escapeHtml(phone)}
+                        ${tel ? `<div style="margin-top:8px;"><a class="callBtn" href="tel:${escapeHtml(tel)}">📞 전화걸기</a></div>` : ``}
+                      </div>
 
-        <div class="k">희망금액</div><div class="v">${escapeHtml(sel.cashhome_1000_loan_amount||'')}</div>
-        <div class="k">자금용도</div><div class="v">${escapeHtml(sel.cashhome_1000_loan_purpose||'')}</div>
+                      <div class="k">희망금액</div><div class="v">${escapeHtml(sel.cashhome_1000_loan_amount||'')}</div>
+                      <div class="k">자금용도</div><div class="v">${escapeHtml(sel.cashhome_1000_loan_purpose||'')}</div>
 
-        <div class="k">IP</div><div class="v">${escapeHtml(sel.cashhome_1000_user_ip||'')}</div>
-        <div class="k">User-Agent</div><div class="v" style="word-break:break-word;">${escapeHtml(sel.cashhome_1000_user_agent||'')}</div>
+                      <div class="k">IP</div><div class="v">${escapeHtml(sel.cashhome_1000_user_ip||'')}</div>
+                      <div class="k">User-Agent</div><div class="v" style="word-break:break-word;">${escapeHtml(sel.cashhome_1000_user_agent||'')}</div>
 
-        <div class="k">개인정보 동의</div>
-        <div class="v">${pOk?'동의함':'미동의'} ${pOk ? `<span style="color:var(--muted)">(${escapeHtml(sel.privacy_ver||'')})</span>` : ''}</div>
+                      <div class="k">개인정보 동의</div>
+                      <div class="v">${pOk?'동의함':'미동의'} ${pOk ? `<span style="color:var(--muted)">(${escapeHtml(sel.privacy_ver||'')})</span>` : ''}</div>
 
-        <div class="k">마케팅 동의</div><div class="v">${mOk?'동의함':'미동의'}</div>
+                      <div class="k">마케팅 동의</div><div class="v">${mOk?'동의함':'미동의'}</div>
 
-        <div class="k">처리일시</div><div class="v" id="d_processed">${escapeHtml(sel.cashhome_1000_processed_at||'')}</div>
-        <div class="k">수정일시</div><div class="v">${escapeHtml(sel.cashhome_1000_updated_at||'')}</div>
-      </div>
+                      <div class="k">처리일시</div><div class="v" id="d_processed">${escapeHtml(sel.cashhome_1000_processed_at||'')}</div>
+                      <div class="k">수정일시</div><div class="v">${escapeHtml(sel.cashhome_1000_updated_at||'')}</div>
+                    </div>
 
-      <div class="subhr"></div>
-      <h3 class="detailTitle" style="font-size:15px;margin:0 0 8px;">요청사항</h3>
-      <div class="memoBox">${escapeHtml(sel.cashhome_1000_request_memo||'')}</div>
+                    <div class="subhr"></div>
+                    <h3 class="detailTitle" style="font-size:15px;margin:0 0 8px;">요청사항</h3>
+                    <div class="memoBox">${escapeHtml(sel.cashhome_1000_request_memo||'')}</div>
 
-      <div class="subhr"></div>
-      <h3 class="detailTitle" style="font-size:15px;margin:0 0 8px;">처리 / 메모 저장</h3>
+                    <div class="subhr"></div>
+                    <h3 class="detailTitle" style="font-size:15px;margin:0 0 8px;">처리 / 메모 저장</h3>
 
-      <div class="formRow">
-        <div class="field">
-          <label for="edit_status">처리상태</label>
-          <select id="edit_status">
-            <option value="new" ${st==='new'?'selected':''}>신규</option>
-            <option value="contacted" ${st==='contacted'?'selected':''}>연락완료</option>
-            <option value="closed" ${st==='closed'?'selected':''}>종결</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="edit_outcome">대출결과</label>
-          <select id="edit_outcome">
-            <option value="pending" ${oc==='pending'?'selected':''}>대기</option>
-            <option value="approved" ${oc==='approved'?'selected':''}>승인</option>
-            <option value="rejected" ${oc==='rejected'?'selected':''}>부결</option>
-          </select>
-        </div>
-      </div>
+                    <div class="formRow">
+                      <div class="field">
+                        <label for="edit_status">처리상태</label>
+                        <select id="edit_status">
+                          <option value="new" ${st==='new'?'selected':''}>신규</option>
+                          <option value="contacted" ${st==='contacted'?'selected':''}>연락완료</option>
+                          <option value="closed" ${st==='closed'?'selected':''}>종결</option>
+                        </select>
+                      </div>
+                      <div class="field">
+                        <label for="edit_outcome">대출결과</label>
+                        <select id="edit_outcome">
+                          <option value="pending" ${oc==='pending'?'selected':''}>대기</option>
+                          <option value="approved" ${oc==='approved'?'selected':''}>승인</option>
+                          <option value="rejected" ${oc==='rejected'?'selected':''}>부결</option>
+                        </select>
+                      </div>
+                    </div>
 
-      <div class="field" style="margin-top:10px;">
-        <label for="edit_note">관리자 메모</label>
-        <input id="edit_note" type="text" value="${escapeHtml(note)}" placeholder="처리 내용/메모를 입력하세요">
-      </div>
+                    <div class="field" style="margin-top:10px;">
+                      <label for="edit_note">관리자 메모</label>
+                      <input id="edit_note" type="text" value="${escapeHtml(note)}" placeholder="처리 내용/메모를 입력하세요">
+                    </div>
 
-      <div class="saveBar">
-        <button class="btn primary" id="saveBtn" type="button">저장</button>
-        <span class="hint" id="saveHint">※ 변경 후 저장 버튼을 눌러야 DB에 반영됩니다.</span>
-      </div>
+                    <div class="saveBar">
+                      <button class="btn primary" id="saveBtn" type="button">저장</button>
+                      <span class="hint" id="saveHint">※ 변경 후 저장 버튼을 눌러야 DB에 반영됩니다.</span>
+                    </div>
 
-      <input type="hidden" id="csrf_token" value="${escapeHtml(sel.csrf_token || document.getElementById('csrf_token')?.value || '')}">
-    `;
+                    <input type="hidden" id="csrf_token" value="${escapeHtml(sel.csrf_token || document.getElementById('csrf_token')?.value || '')}">
+                `;
 
-                // 저장 버튼 바인딩
-                const saveBtn = document.getElementById('saveBtn');
-                saveBtn.addEventListener('click', saveCurrent);
+                document.getElementById('saveBtn').addEventListener('click', saveCurrent);
+
+                // ✅ 상세가 길어져 레이아웃 변하면 다시 계산
+                autoListHeight();
             }
 
             async function saveCurrent() {
@@ -1637,15 +1680,11 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
                     }
                     alert(data.message || '저장되었습니다.');
 
-                    // csrf 갱신
                     if (data.csrf_token) {
                         const t = document.getElementById('csrf_token');
                         if (t) t.value = data.csrf_token;
                     }
-
-                    // 저장 후: 목록/통계 즉시 갱신 (승인 배지/그래프 반영)
                     refresh(true);
-
                 } catch (e) {
                     alert('네트워크 오류가 발생했습니다.');
                 }
@@ -1674,66 +1713,48 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
                         return;
                     }
 
-                    // 선택 유지
                     if (!keepSelection) {
                         selectedId = data.selected?.cashhome_1000_id ? Number(data.selected.cashhome_1000_id) : 0;
                     }
 
-                    // UI 반영
                     countText.textContent = String((data.rows || []).length);
                     rangeText.textContent = `${data.filters.start} ~ ${data.filters.end}`;
 
-                    // excel 링크 업데이트
-                    // (필터 값이 서버 기준으로 정규화 될 수 있으니 다시 세팅)
                     elStart.value = data.filters.start;
                     elEnd.value = data.filters.end;
                     elStatus.value = data.filters.status;
                     elOutcome.value = data.filters.outcome;
 
-                    // 키워드는 입력 중인 값 유지(여기서 덮어쓰면 타이핑 중 커서 튐)
-                    // 단, 서버에서 트림된 값이 필요하면 저장 후에만 반영해도 됨.
-
                     renderList(data.rows || []);
                     renderStats(data.stats || {});
 
-                    // 상세 렌더
-                    // csrf 토큰을 selected에 실어 보냄
-                    if (data.selected) {
-                        data.selected.csrf_token = data.csrf_token || '';
-                    }
+                    if (data.selected) data.selected.csrf_token = data.csrf_token || '';
                     renderDetail(data.selected || null);
 
-                    // url state(검색조건 즉시 반영)
                     const q2 = buildQuery({
                         ajax: 0
                     });
                     history.replaceState(null, '', 'admin_inquiries.php?' + q2);
+
+                    // ✅ ajax 갱신 후에도 다시 한번 보정
+                    autoListHeight();
 
                 } catch (e) {
                     alert('네트워크 오류가 발생했습니다.');
                 }
             }
 
-            // === 이벤트: 선택형 필터는 변경 즉시 반영(자동 소팅/필터) ===
             [elStart, elEnd, elStatus, elOutcome].forEach(el => {
-                el.addEventListener('change', () => {
-                    debounce(() => refresh(false), 80);
-                });
+                el.addEventListener('change', () => debounce(() => refresh(false), 80));
             });
 
-            // === 이벤트: 키워드 입력은 타이핑마다 검색(리로드 없음) ===
-            // ✅ 한글 1글자 멈춤 문제 해결: input 이벤트 + debounce + ajax
             [elName, elMemo, elNote].forEach(el => {
-                el.addEventListener('input', () => {
-                    debounce(() => refresh(false), 180);
-                });
+                el.addEventListener('input', () => debounce(() => refresh(false), 180));
             });
 
-            // 초기 차트 렌더(SSR 값 기반)
             const initStats = <?= json_encode($stats, JSON_UNESCAPED_UNICODE) ?>;
             renderStats(initStats);
 
-            // 리스트 클릭(SSR 렌더된 항목에도 바인딩)
             document.querySelectorAll('.item').forEach(item => {
                 item.addEventListener('click', () => {
                     selectedId = Number(item.dataset.id || 0);
@@ -1743,9 +1764,8 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
                 });
             });
 
-            // 초기 엑셀 링크 맞춤
             updateExcelLink();
-
+            autoListHeight();
         })();
     </script>
 </body>
