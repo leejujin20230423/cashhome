@@ -164,36 +164,47 @@ $old = [
 ];
 
 
-// ✅ 카카오 로그인 결과 메시지 (URL query)
-$kakaoErr = (string)($_GET['kakao_error'] ?? '');
-$kakaoOkMsg = !empty($_GET['kakao_ok']) ? '카카오 로그인 완료! 성함이 자동 입력되었습니다.' : '';
+// ==========================================================
+// ✅🔥 카카오 로그인 → 자동입력 (완전 안정 버전)
+// ==========================================================
 
-// ✅ 카카오 프로필이 있으면 폼 자동 채움 + draft에도 반영
+$kakaoErr = (string)($_GET['kakao_error'] ?? '');
+$kakaoOkMsg = !empty($_GET['kakao_ok'])
+    ? '카카오 로그인 완료! 성함이 자동 입력되었습니다.'
+    : '';
+
 if (!empty($_SESSION['kakao_profile']) && is_array($_SESSION['kakao_profile'])) {
+
     $kp = $_SESSION['kakao_profile'];
+
     $kName  = trim((string)($kp['nickname'] ?? ''));
     $kPhone = trim((string)($kp['phone_number'] ?? ''));
 
-    // 1) 화면에 보여줄 값($old) 채우기
-    if ($kName !== '' && ($old['name'] === '' || mb_strlen($old['name']) < 2)) {
+    // 👉 카카오 값이 존재하면 무조건 우선 적용
+    if ($kName !== '') {
         $old['name'] = $kName;
     }
-    if ($kPhone !== '' && $old['phone'] === '') {
+
+    if ($kPhone !== '') {
         $old['phone'] = $kPhone;
     }
 
-    // 2) ✅ 사전검증(preconsent)용 draft에도 반영(동의 누르기 전에 이름/폰 유지)
-    if (empty($_SESSION['cashhome_inquiry_draft']) || !is_array($_SESSION['cashhome_inquiry_draft'])) {
-        $_SESSION['cashhome_inquiry_draft'] = $old;
-    } else {
-        if ($kName !== '' && (empty($_SESSION['cashhome_inquiry_draft']['name']) || mb_strlen((string)$_SESSION['cashhome_inquiry_draft']['name']) < 2)) {
-            $_SESSION['cashhome_inquiry_draft']['name'] = $kName;
-        }
-        if ($kPhone !== '' && empty($_SESSION['cashhome_inquiry_draft']['phone'])) {
-            $_SESSION['cashhome_inquiry_draft']['phone'] = $kPhone;
-        }
+    // 👉 draft 세션도 동기화 (동의 이동/새로고침 대비)
+    $_SESSION['cashhome_inquiry_draft'] = $old;
+}
+
+// 2) ✅ 사전검증(preconsent)용 draft에도 반영(동의 누르기 전에 이름/폰 유지)
+if (empty($_SESSION['cashhome_inquiry_draft']) || !is_array($_SESSION['cashhome_inquiry_draft'])) {
+    $_SESSION['cashhome_inquiry_draft'] = $old;
+} else {
+    if ($kName !== '' && (empty($_SESSION['cashhome_inquiry_draft']['name']) || mb_strlen((string)$_SESSION['cashhome_inquiry_draft']['name']) < 2)) {
+        $_SESSION['cashhome_inquiry_draft']['name'] = $kName;
+    }
+    if ($kPhone !== '' && empty($_SESSION['cashhome_inquiry_draft']['phone'])) {
+        $_SESSION['cashhome_inquiry_draft']['phone'] = $kPhone;
     }
 }
+
 
 /**
  * ✅ 동의페이지 이동 전 사전검증 요청 (AJAX)
@@ -1224,6 +1235,21 @@ $disclosure = [
                     <?php elseif ($errorMsg): ?>
                         <div class="alert err" role="alert"><?= h($errorMsg) ?></div>
                     <?php endif; ?>
+
+
+
+                    <?php if (!empty($_GET['debug'])): ?>
+                        <pre style="color:#fff; background:#000; padding:10px; border-radius:10px;">
+kakao_profile:
+<?= htmlspecialchars(print_r($_SESSION['kakao_profile'] ?? null, true), ENT_QUOTES, 'UTF-8') ?>
+draft:
+<?= htmlspecialchars(print_r($_SESSION['cashhome_inquiry_draft'] ?? null, true), ENT_QUOTES, 'UTF-8') ?>
+old:
+<?= htmlspecialchars(print_r($old ?? null, true), ENT_QUOTES, 'UTF-8') ?>
+</pre>
+                    <?php endif; ?>
+
+
 
                     <form id="applyForm" method="post" action="#apply" autocomplete="on" novalidate>
                         <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>" />
