@@ -1,30 +1,40 @@
 <?php
 declare(strict_types=1);
-?>
-
-<?php 
-
 session_start();
-echo "Hello, Cashhome! This is the landing page (index.php)"; ?>
 
-<?php if (!empty($_GET['debug'])): ?>
-<pre style="color:#0f0;background:#000;padding:15px;border-radius:12px;font-size:14px;">
-==== 1. kakao_profile ====
-<?php var_dump($_SESSION['kakao_profile'] ?? null); ?>
+// 테스트: 세션이 유지되는지 확인용(새로고침마다 유지되어야 함)
+if (!isset($_SESSION['__test'])) {
+    $_SESSION['__test'] = 'set@' . date('H:i:s');
+}
 
-==== 2. draft ====
-<?php var_dump($_SESSION['cashhome_inquiry_draft'] ?? null); ?>
+echo "Hello, Cashhome! This is the landing page (index.php)\n";
 
-==== 3. old ====
-<?php var_dump($old ?? null); ?>
+if (!empty($_GET['debug'])) {
+    echo "<pre style='color:#0f0;background:#000;padding:15px;border-radius:12px;font-size:14px;white-space:pre-wrap;'>";
+    echo "==== 0. PHP SESSION ====\n";
+    var_dump([
+        'session_id' => session_id(),
+        'cookie_name' => session_name(),
+        'cookie_has' => isset($_COOKIE[session_name()]) ? 'YES' : 'NO',
+        'cookie_value' => $_COOKIE[session_name()] ?? null,
+        '__test' => $_SESSION['__test'] ?? null,
+    ]);
 
-==== 4. GET ====
-<?php var_dump($_GET); ?>
+    echo "\n==== 1. kakao_profile ====\n";
+    var_dump($_SESSION['kakao_profile'] ?? null);
 
-</pre>
-<?php endif; ?>
+    echo "\n==== 2. draft ====\n";
+    var_dump($_SESSION['cashhome_inquiry_draft'] ?? null);
 
-<?php
+    echo "\n==== 3. GET ====\n";
+    var_dump($_GET);
+
+    echo "\n==== 4. FULL _SESSION ====\n";
+    var_dump($_SESSION);
+
+    echo "</pre>";
+}
+exit; // ✅ 여기서 멈춰서 테스트만 보이게 함
 /**
  * ECASH (이케쉬대부) - index.php
  * - 랜딩페이지 + 상담신청
