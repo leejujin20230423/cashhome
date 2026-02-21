@@ -2,7 +2,10 @@
 declare(strict_types=1);
 ?>
 
-<?php echo "Hello, Cashhome! This is the landing page (index.php)."; ?>
+<?php 
+
+session_start();
+echo "Hello, Cashhome! This is the landing page (index.php)."; ?>
 
 <?php if (!empty($_GET['debug'])): ?>
 <pre style="color:#0f0;background:#000;padding:15px;border-radius:12px;font-size:14px;">
