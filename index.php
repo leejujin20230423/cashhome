@@ -1,7 +1,25 @@
 <?php
-
 declare(strict_types=1);
+?>
 
+<?php if (!empty($_GET['debug'])): ?>
+<pre style="color:#0f0;background:#000;padding:15px;border-radius:12px;font-size:14px;">
+==== 1. kakao_profile ====
+<?php var_dump($_SESSION['kakao_profile'] ?? null); ?>
+
+==== 2. draft ====
+<?php var_dump($_SESSION['cashhome_inquiry_draft'] ?? null); ?>
+
+==== 3. old ====
+<?php var_dump($old ?? null); ?>
+
+==== 4. GET ====
+<?php var_dump($_GET); ?>
+
+</pre>
+<?php endif; ?>
+
+<?php
 /**
  * ECASH (이케쉬대부) - index.php
  * - 랜딩페이지 + 상담신청
