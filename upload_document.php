@@ -1,6 +1,73 @@
 <?php
 declare(strict_types=1);
 
+
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+error_reporting(E_ALL);
+
+header('Content-Type: application/json; charset=utf-8');
+
+function fail(string $msg, array $extra = []): void {
+  http_response_code(400);
+  echo json_encode([
+    'ok' => false,
+    'message' => $msg,
+    'extra' => $extra,
+  ], JSON_UNESCAPED_UNICODE);
+  exit;
+}
+
+function ok(array $data = []): void {
+  echo json_encode(array_merge(['ok' => true], $data), JSON_UNESCAPED_UNICODE);
+  exit;
+}
+
+// ✅ PHP 업로드 환경 확인용(문제 해결되면 삭제 가능)
+if (!empty($_GET['debug_env'])) {
+  ok([
+    'post_max_size' => ini_get('post_max_size'),
+    'upload_max_filesize' => ini_get('upload_max_filesize'),
+    'max_file_uploads' => ini_get('max_file_uploads'),
+    'max_input_time' => ini_get('max_input_time'),
+    'max_execution_time' => ini_get('max_execution_time'),
+    'memory_limit' => ini_get('memory_limit'),
+  ]);
+}
+
+// ✅ 업로드 파일 존재 확인
+if (empty($_FILES['file'])) {
+  fail('파일이 전달되지 않았습니다.', ['_FILES' => array_keys($_FILES)]);
+}
+
+$f = $_FILES['file'];
+
+// ✅ PHP 업로드 에러코드 체크 (이거 안하면 대부분 “오류발생”으로만 보임)
+if (!empty($f['error'])) {
+  $map = [
+    UPLOAD_ERR_INI_SIZE   => '파일이 너무 큽니다(upload_max_filesize 초과)',
+    UPLOAD_ERR_FORM_SIZE  => '파일이 너무 큽니다(폼 MAX_FILE_SIZE 초과)',
+    UPLOAD_ERR_PARTIAL    => '파일이 일부만 업로드되었습니다',
+    UPLOAD_ERR_NO_FILE    => '파일이 없습니다',
+    UPLOAD_ERR_NO_TMP_DIR => '서버 임시폴더(tmp)가 없습니다',
+    UPLOAD_ERR_CANT_WRITE => '디스크에 파일을 쓸 수 없습니다(권한/용량)',
+    UPLOAD_ERR_EXTENSION  => 'PHP 확장에 의해 업로드가 중단되었습니다',
+  ];
+  $msg = $map[$f['error']] ?? ('알 수 없는 업로드 오류 코드: ' . $f['error']);
+  fail($msg, ['error_code' => $f['error']]);
+}
+
+// ✅ tmp 파일 실존 확인
+if (empty($f['tmp_name']) || !is_uploaded_file($f['tmp_name'])) {
+  fail('임시 업로드 파일이 유효하지 않습니다.', ['tmp_name' => $f['tmp_name'] ?? null]);
+}
+
+// 여기부터는 기존 업로드/리사이즈/DB 저장 로직 진행
+
+
+
+
+
 header('Content-Type: application/json; charset=utf-8');
 session_start();
 
