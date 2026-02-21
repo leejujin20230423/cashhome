@@ -379,7 +379,7 @@ $disclosure = [
  *   예: /images/ecash-icon.png
  * - 지금은 "아이콘 준비됨" 기준으로 경로만 연결해둡니다.
  */
-$logoImg = 'images/ecash-icon.png';
+$logoImg = '/images/ecash_icon_512.png';
 ?>
 <!doctype html>
 <html lang="ko">
