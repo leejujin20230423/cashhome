@@ -1,19 +1,7 @@
 <?php
 declare(strict_types=1);
 
-
-
-$https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-      || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443);
-
-session_set_cookie_params([
-    'lifetime' => 0,
-    'path' => '/',
-    'secure' => $https,
-    'httponly' => true,
-    'samesite' => 'Lax',
-]);
-session_start();
+require __DIR__ . '/session_bootstrap.php';
 
 const KAKAO_REST_API_KEY = 'd6cf1b953dfb5b853674b0c265090b1b';
 const KAKAO_CLIENT_SECRET = 'YqcjxkwRyqjK813eckdVyn4eAP87q4U7';
@@ -106,6 +94,7 @@ if ($code === '' || $state === '') {
 }
 
 if (empty($_SESSION['kakao_oauth_state']) || !hash_equals((string)$_SESSION['kakao_oauth_state'], $state)) {
+    // ✅ 여기 걸리면: 세션 유지 실패(쿠키 secure/도메인/https 판별 문제) 가능성이 가장 큼
     redirect_with_query($return, ['kakao_error' => 'state 검증 실패(세션 문제)']);
 }
 unset($_SESSION['kakao_oauth_state']);
@@ -143,13 +132,16 @@ if ($http2 !== 200) {
 }
 
 $me = json_array($body2);
+
 $nickname = (string)($me['kakao_account']['profile']['nickname'] ?? '');
 $phoneRaw = (string)($me['kakao_account']['phone_number'] ?? '');
 $phone = normalize_phone_kr($phoneRaw);
 
+// ✅ 저장(여기가 index.php에서 읽는 값)
 $_SESSION['kakao_profile'] = [
     'nickname' => $nickname,
     'phone_number' => $phone,
 ];
 
+// 리다이렉트
 redirect_with_query($return, ['kakao_ok' => '1']);
