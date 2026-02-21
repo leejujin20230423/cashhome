@@ -1323,7 +1323,7 @@ COOKIE(PHPSESSID):
                         </div>
 
                         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                            <a href="kakao_login.php?return=index.php#apply" class="kakao-btn">💬 카카오 1초접수</a>
+                            <a href="kakao_login.php?return=index.php#apply" class="kakao-btn" aria-disabled="">💬 카카오 1초접수</a>
 
                             <button class="cta" type="submit" <?= $consentOk ? '' : 'disabled' ?>>
                                 상담 신청 접수
