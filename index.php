@@ -6,15 +6,16 @@ declare(strict_types=1);
  * ECASH (이케쉬대부) - index.php
  * - 랜딩페이지 + 상담신청
  * - 동의는 consent.php에서만 완료되며(index.php 체크박스/영역 클릭 시 consent.php로 이동)
- * - 동의 완료(세션) 상태일 때만 접수 가능
+ * - 동의 완료(세션) 상태일 때만 최종 접수 가능
  * - 동의 클릭 전 입력값 필수 검증(누가 동의했는지 증적 확보 목적)
  * - 입력 오류는 팝업(alert)으로 안내
  * - 상담신청 저장: cashhome_1000_inquiries + cashhome_1100_consent_logs
  *
- * ✅ 추가됨(카카오 1초 접수)
- * - kakao_login.php / kakao_callback.php에서 세션($_SESSION['kakao_profile'])에 저장한 값을
- *   name/phone 입력칸에 자동 채움
- * - 폼에 "카카오로 1초 접수(자동입력)" 버튼 추가
+ * ✅ 수정사항(요청하신 “접수 버튼 눌러도 제자리” 대응)
+ * 1) 접수 버튼 disabled 제거(항상 클릭 가능)
+ * 2) 동의 미완료 상태에서 접수 클릭 시: alert + preconsent 검증 + consent.php로 자동 이동
+ * 3) form action을 index.php#apply 로 명확화(해시 때문에 “그자리”처럼 보이는 현상 완화)
+ * 4) preconsent fetch 응답이 JSON이 아닐 때도 안전하게 처리(서버 경고/오류로 JSON 깨지는 케이스 방어)
  */
 
 session_start();
@@ -60,6 +61,16 @@ function cashhome_pdo(): PDO
 
 /**
  * ✅ 동의 완료 여부(세션 기반)
+ * consent.php에서 세팅되는 형태(당신이 준 consent.php 기준):
+ * $_SESSION['cashhome_consent'] = [
+ *   'privacy' => bool,
+ *   'marketing' => bool,
+ *   'privacy_at' => 'YYYY-mm-dd HH:ii:ss' | null,
+ *   'marketing_at' => 'YYYY-mm-dd HH:ii:ss' | null,
+ *   'privacy_ver' => 'v1',
+ *   'marketing_ver' => 'v1',
+ *   // (옵션) 'version','consented_at' 형태도 호환 처리
+ * ];
  */
 function cashhome_consent_ok(): bool
 {
@@ -70,11 +81,13 @@ function cashhome_consent_ok(): bool
     $marketing = !empty($c['marketing']);
     if (!$privacy || !$marketing) return false;
 
+    // consent.php(최신) 키 우선
     $hasPrivacyAt = !empty($c['privacy_at']);
     $hasMarketingAt = !empty($c['marketing_at']);
     $hasPrivacyVer = !empty($c['privacy_ver']);
     $hasMarketingVer = !empty($c['marketing_ver']);
 
+    // (이전 형태) version/consented_at도 허용
     $hasLegacy = (!empty($c['version']) && !empty($c['consented_at']));
 
     if (($hasPrivacyAt && $hasMarketingAt && $hasPrivacyVer && $hasMarketingVer) || $hasLegacy) {
@@ -84,7 +97,9 @@ function cashhome_consent_ok(): bool
 }
 
 /**
- * ✅ 입력값 검증
+ * ✅ 입력값 검증 (동의 페이지로 이동 전 / 최종 접수 전 공통 사용)
+ * - 메모는 선택
+ * - 성함/연락처/희망금액/자금용도는 필수
  */
 function validate_inquiry_input(array $in): array
 {
@@ -105,6 +120,7 @@ function validate_inquiry_input(array $in): array
         $errors[] = '연락처를 정확히 입력해주세요.';
     }
 
+    // 희망금액 필수
     if ($amount === '') {
         $errors[] = '희망금액을 입력해주세요.';
     } else {
@@ -114,10 +130,12 @@ function validate_inquiry_input(array $in): array
         }
     }
 
+    // 자금용도 필수 (선택 안함 불가)
     if ($purpose === '' || $purpose === '선택 안함') {
         $errors[] = '자금용도를 선택해주세요.';
     }
 
+    // 요청사항 선택 (길이만 제한)
     if (mb_strlen($memo) > 1000) {
         $errors[] = '요청사항은 1000자 이하로 입력해주세요.';
     }
@@ -152,29 +170,6 @@ $old = [
 ];
 
 /**
- * ✅ 카카오 1초 접수(자동입력) - 세션 기반 자동 채움
- * kakao_callback.php에서:
- * $_SESSION['kakao_profile'] = ['nickname' => ..., 'phone_number' => ...];
- */
-$kakao = $_SESSION['kakao_profile'] ?? null;
-if (is_array($kakao)) {
-    if ($old['name'] === '' && !empty($kakao['nickname'])) {
-        $old['name'] = (string)$kakao['nickname'];
-    }
-
-    // phone_number는 "+82 10xxxxxxxx" / "+82 010-xxxx-xxxx" 등으로 올 수 있어 단순 변환
-    if ($old['phone'] === '' && !empty($kakao['phone_number'])) {
-        $p = (string)$kakao['phone_number'];
-        $p = str_replace([' ', '-'], '', $p);
-        if (str_starts_with($p, '+82')) {
-            $p = substr($p, 3);     // +82 제거
-            if (!str_starts_with($p, '0')) $p = '0' . $p; // 10... 이면 010... 형태로
-        }
-        $old['phone'] = $p;
-    }
-}
-
-/**
  * ✅ 동의페이지 이동 전 사전검증 요청 (AJAX)
  * POST action=preconsent
  */
@@ -193,7 +188,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
         exit;
     }
 
+    // ✅ 누가 동의했는지 증적을 위해 입력값을 먼저 확보(세션 저장)
     $_SESSION['cashhome_inquiry_draft'] = $clean;
+
     echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
     exit;
 }
@@ -203,6 +200,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
  */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !== 'preconsent') {
 
+    // Honeypot (봇 방지)
     $hp = trim((string)($_POST['company_website'] ?? ''));
     if ($hp !== '') {
         $successMsg = '상담 신청이 접수되었습니다. 담당자가 확인 후 연락드리겠습니다.';
@@ -223,6 +221,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
                 'memo' => $clean['memo'],
             ];
 
+            // ✅ 동의 완료 필수
             if (!cashhome_consent_ok()) {
                 $errs[] = "개인정보/마케팅 동의가 필요합니다.\n입력 완료 후 동의 버튼을 눌러 동의페이지에서 동의를 완료해주세요.";
             }
@@ -240,21 +239,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
                 $purpose = $clean['purpose'];
                 $memo = $clean['memo'];
 
+                // ✅ 세션 동의 정보(증적)
                 $consent = $_SESSION['cashhome_consent'];
 
+                // consent.php(최신) 기반
                 $privacyVer = (string)($consent['privacy_ver'] ?? PRIVACY_POLICY_VERSION);
                 $marketingVer = (string)($consent['marketing_ver'] ?? 'v1');
                 $privacyAt = (string)($consent['privacy_at'] ?? '');
                 $marketingAt = (string)($consent['marketing_at'] ?? '');
 
+                // 레거시 호환
                 if ($privacyAt === '' && !empty($consent['consented_at'])) $privacyAt = (string)$consent['consented_at'];
                 if ($marketingAt === '' && !empty($consent['consented_at'])) $marketingAt = (string)$consent['consented_at'];
                 if ($privacyVer === '' && !empty($consent['version'])) $privacyVer = (string)$consent['version'];
+
+                $newId = null;
 
                 try {
                     $pdo = cashhome_pdo();
                     $pdo->beginTransaction();
 
+                    // 1) 상담 신청 저장 (1000)
                     $stmt = $pdo->prepare("
                         INSERT INTO cashhome_1000_inquiries (
                             cashhome_1000_created_at,
@@ -301,6 +306,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
                         ':loan_purpose' => $purpose,
                         ':request_memo' => $memo !== '' ? $memo : null,
 
+                        // ✅ 동의 완료 후에만 여기까지 오므로 1 저장
                         ':agree_privacy' => 1,
                         ':privacy_policy_version' => $privacyVer,
                         ':privacy_agreed_at' => $privacyAt !== '' ? $privacyAt : $ts,
@@ -313,6 +319,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
 
                     $newId = (int)$pdo->lastInsertId();
 
+                    // 2) 동의 로그 저장 (1100) - privacy
                     $stmtP = $pdo->prepare("
                         INSERT INTO cashhome_1100_consent_logs (
                             cashhome_1100_inquiry_id,
@@ -340,6 +347,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
                         ':user_agent' => $ua !== '' ? mb_substr($ua, 0, 255) : null,
                     ]);
 
+                    // 3) 동의 로그 저장 (1100) - marketing
                     $stmtP->execute([
                         ':inquiry_id' => $newId,
                         ':consent_type' => 'marketing',
@@ -359,23 +367,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
                 }
 
                 if ($errorMsg === '') {
+                    // CSRF rotate
                     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 
+                    // ✅ 접수 완료 후: 동의/입력 draft 정리
                     unset($_SESSION['cashhome_consent'], $_SESSION['cashhome_inquiry_draft']);
-                    // ✅ 접수 완료 후 카카오 자동입력 세션도 비우고 싶으면 아래 유지(권장)
-                    unset($_SESSION['kakao_profile']);
-
                     $consentOk = false;
 
                     $successMsg = '상담 신청이 접수되었습니다. 담당자가 확인 후 연락드리겠습니다.';
                     $old = ['name' => '', 'phone' => '', 'amount' => '', 'purpose' => '선택 안함', 'memo' => ''];
                 } else {
-                    // 에러가 없을 때만 draft 저장
-                    if (empty($errs)) {
-                        $_SESSION['cashhome_inquiry_draft'] = $clean;
-                    } else {
-                        unset($_SESSION['cashhome_inquiry_draft']); // 또는 아예 저장 안 함
-                    }
+                    // 오류가 나도 입력 draft는 유지
+                    $_SESSION['cashhome_inquiry_draft'] = $clean;
                 }
             }
         }
@@ -431,14 +434,8 @@ $disclosure = [
             --max: 1120px;
         }
 
-        * {
-            box-sizing: border-box
-        }
-
-        html,
-        body {
-            height: 100%
-        }
+        * { box-sizing: border-box }
+        html, body { height: 100% }
 
         body {
             margin: 0;
@@ -452,9 +449,7 @@ $disclosure = [
             line-height: 1.5;
         }
 
-        a {
-            color: inherit
-        }
+        a { color: inherit }
 
         .wrap {
             max-width: var(--max);
@@ -501,17 +496,8 @@ $disclosure = [
             letter-spacing: .5px;
         }
 
-        .brand strong {
-            display: block;
-            font-size: 14px;
-            letter-spacing: .6px
-        }
-
-        .brand span {
-            display: block;
-            font-size: 12px;
-            color: var(--muted)
-        }
+        .brand strong { display: block; font-size: 14px; letter-spacing: .6px }
+        .brand span { display: block; font-size: 12px; color: var(--muted) }
 
         .navlinks {
             display: flex;
@@ -549,41 +535,6 @@ $disclosure = [
             white-space: nowrap;
         }
 
-        .btnGhost {
-            background: transparent;
-            border: 1px solid var(--line);
-            color: var(--text);
-            padding: 10px 14px;
-            border-radius: 999px;
-            text-decoration: none;
-            font-weight: 700;
-            font-size: 13px;
-        }
-
-        .btnGhost:hover {
-            background: rgba(255, 255, 255, .05);
-        }
-
-        /* ✅ 카카오 버튼(가벼운 스타일 추가) */
-        .kakaoBtn {
-            text-decoration: none;
-            padding: 10px 14px;
-            border-radius: 999px;
-            border: 1px solid rgba(234, 240, 255, .18);
-            background: rgba(255, 255, 255, .06);
-            color: var(--text);
-            font-weight: 900;
-            font-size: 13px;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            cursor: pointer;
-        }
-
-        .kakaoBtn:hover {
-            background: rgba(255, 255, 255, .09);
-        }
-
         .hero {
             padding: 26px 0 10px;
             display: grid;
@@ -599,9 +550,7 @@ $disclosure = [
             box-shadow: var(--shadow);
         }
 
-        .heroL {
-            padding: 26px 22px;
-        }
+        .heroL { padding: 26px 22px; }
 
         .kicker {
             display: inline-flex;
@@ -630,17 +579,9 @@ $disclosure = [
             letter-spacing: -0.6px;
         }
 
-        .sub {
-            color: var(--muted);
-            margin: 0 0 18px;
-            font-size: 14px;
-        }
+        .sub { color: var(--muted); margin: 0 0 18px; font-size: 14px; }
 
-        .bullets {
-            display: grid;
-            gap: 10px;
-            margin: 14px 0 20px;
-        }
+        .bullets { display: grid; gap: 10px; margin: 14px 0 20px; }
 
         .b {
             display: flex;
@@ -662,28 +603,25 @@ $disclosure = [
             margin-top: 1px;
         }
 
-        .b strong {
-            display: block;
+        .b strong { display: block; font-size: 13px; }
+        .b span { display: block; font-size: 12px; color: var(--muted); }
+
+        .heroBtns { display: flex; gap: 10px; flex-wrap: wrap; }
+
+        .btnGhost {
+            background: transparent;
+            border: 1px solid var(--line);
+            color: var(--text);
+            padding: 10px 14px;
+            border-radius: 999px;
+            text-decoration: none;
+            font-weight: 700;
             font-size: 13px;
         }
 
-        .b span {
-            display: block;
-            font-size: 12px;
-            color: var(--muted);
-        }
+        .btnGhost:hover { background: rgba(255, 255, 255, .05); }
 
-        .heroBtns {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-
-        .heroR {
-            padding: 18px;
-            display: grid;
-            gap: 12px;
-        }
+        .heroR { padding: 18px; display: grid; gap: 12px; }
 
         .mini {
             padding: 14px 14px;
@@ -692,16 +630,8 @@ $disclosure = [
             background: rgba(255, 255, 255, .03);
         }
 
-        .mini h3 {
-            margin: 0 0 8px;
-            font-size: 14px;
-        }
-
-        .mini p {
-            margin: 0;
-            color: var(--muted);
-            font-size: 12px;
-        }
+        .mini h3 { margin: 0 0 8px; font-size: 14px; }
+        .mini p { margin: 0; color: var(--muted); font-size: 12px; }
 
         .grid {
             display: grid;
@@ -710,44 +640,16 @@ $disclosure = [
             margin-top: 14px;
         }
 
-        .col4 {
-            grid-column: span 4;
-        }
+        .col4 { grid-column: span 4; }
+        .col6 { grid-column: span 6; }
+        .col12 { grid-column: span 12; }
 
-        .col6 {
-            grid-column: span 6;
-        }
+        .sectionTitle { margin: 26px 0 10px; font-size: 18px; letter-spacing: -0.2px; }
+        .sectionSub { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
 
-        .col12 {
-            grid-column: span 12;
-        }
-
-        .sectionTitle {
-            margin: 26px 0 10px;
-            font-size: 18px;
-            letter-spacing: -0.2px;
-        }
-
-        .sectionSub {
-            margin: 0 0 12px;
-            color: var(--muted);
-            font-size: 13px;
-        }
-
-        .box {
-            padding: 18px;
-        }
-
-        .box h3 {
-            margin: 0 0 8px;
-            font-size: 15px;
-        }
-
-        .box p {
-            margin: 0;
-            color: var(--muted);
-            font-size: 13px;
-        }
+        .box { padding: 18px; }
+        .box h3 { margin: 0 0 8px; font-size: 15px; }
+        .box p { margin: 0; color: var(--muted); font-size: 13px; }
 
         .pill {
             display: inline-flex;
@@ -761,29 +663,14 @@ $disclosure = [
             font-size: 12px;
         }
 
-        .formWrap {
-            padding: 18px;
-        }
+        .formWrap { padding: 18px; }
+        form { display: grid; gap: 10px; }
 
-        form {
-            display: grid;
-            gap: 10px;
-        }
+        .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
-        .row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-        }
+        label { font-size: 12px; color: var(--muted); }
 
-        label {
-            font-size: 12px;
-            color: var(--muted);
-        }
-
-        input,
-        select,
-        textarea {
+        input, select, textarea {
             width: 100%;
             padding: 12px 12px;
             border-radius: 14px;
@@ -793,24 +680,16 @@ $disclosure = [
             outline: none;
         }
 
-        input:focus,
-        select:focus,
-        textarea:focus {
+        input:focus, select:focus, textarea:focus {
             border-color: rgba(110, 231, 255, .55);
             box-shadow: 0 0 0 3px rgba(110, 231, 255, .12);
         }
 
-        textarea {
-            min-height: 110px;
-            resize: vertical;
-        }
+        textarea { min-height: 110px; resize: vertical; }
 
-        .checks {
-            display: grid;
-            gap: 10px;
-            margin-top: 6px;
-        }
+        .checks { display: grid; gap: 10px; margin-top: 6px; }
 
+        /* ====== ✅ UX 업그레이드: Consent 카드형 ====== */
         .consentCard {
             display: flex;
             gap: 12px;
@@ -831,9 +710,7 @@ $disclosure = [
             border-color: rgba(234, 240, 255, .18);
         }
 
-        .consentCard:active {
-            transform: translateY(0px);
-        }
+        .consentCard:active { transform: translateY(0px); }
 
         .consentIcon {
             width: 38px;
@@ -867,10 +744,7 @@ $disclosure = [
             box-shadow: 0 0 16px rgba(110, 231, 255, .55);
         }
 
-        .consentBody {
-            flex: 1 1 auto;
-            min-width: 0
-        }
+        .consentBody { flex: 1 1 auto; min-width: 0 }
 
         .consentTitle {
             font-weight: 900;
@@ -937,13 +811,8 @@ $disclosure = [
             font-size: 13px;
         }
 
-        .alert.ok {
-            border-color: rgba(110, 231, 255, .35);
-        }
-
-        .alert.err {
-            border-color: rgba(255, 120, 120, .35);
-        }
+        .alert.ok { border-color: rgba(110, 231, 255, .35); }
+        .alert.err { border-color: rgba(255, 120, 120, .35); }
 
         .footer {
             margin-top: 22px;
@@ -958,10 +827,7 @@ $disclosure = [
             gap: 14px;
         }
 
-        .kv {
-            display: grid;
-            gap: 6px;
-        }
+        .kv { display: grid; gap: 6px; }
 
         .kv div {
             display: flex;
@@ -969,21 +835,10 @@ $disclosure = [
             align-items: flex-start;
         }
 
-        .kv b {
-            min-width: 110px;
-            color: rgba(234, 240, 255, .85);
-        }
+        .kv b { min-width: 110px; color: rgba(234, 240, 255, .85); }
 
-        .hr {
-            height: 1px;
-            background: var(--line);
-            margin: 14px 0;
-        }
-
-        .tiny {
-            font-size: 11px;
-            color: rgba(157, 176, 208, .9);
-        }
+        .hr { height: 1px; background: var(--line); margin: 14px 0; }
+        .tiny { font-size: 11px; color: rgba(157, 176, 208, .9); }
 
         .topbtn {
             position: fixed;
@@ -1000,6 +855,7 @@ $disclosure = [
             display: none;
         }
 
+        /* disabled 스타일은 남겨두되, 현재는 submit 버튼에 disabled를 안 씁니다 */
         button[disabled] {
             opacity: .45;
             cursor: not-allowed;
@@ -1007,26 +863,11 @@ $disclosure = [
         }
 
         @media (max-width: 920px) {
-            .hero {
-                grid-template-columns: 1fr;
-            }
-
-            .row {
-                grid-template-columns: 1fr;
-            }
-
-            .col4,
-            .col6 {
-                grid-column: span 12;
-            }
-
-            h1 {
-                font-size: 30px;
-            }
-
-            .footer .cols {
-                grid-template-columns: 1fr;
-            }
+            .hero { grid-template-columns: 1fr; }
+            .row { grid-template-columns: 1fr; }
+            .col4, .col6 { grid-column: span 12; }
+            h1 { font-size: 30px; }
+            .footer .cols { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -1048,7 +889,7 @@ $disclosure = [
                 <a href="#disclosure">고지</a>
                 <a href="#apply">상담신청</a>
                 <a class="cta" href="#apply">빠른 상담</a>
-                <a class="btnGhost" href="admin_login.php" rel="nofollow">관리자 로그인</a>
+                <a class="btnGhost" href="admin_login.php" rel="nofollow">관리자</a>
             </div>
         </div>
     </div>
@@ -1138,7 +979,7 @@ $disclosure = [
                 </div>
                 <div class="card box col6">
                     <h3>접수</h3>
-                    <p>동의 완료 상태에서만 접수 버튼이 동작합니다.</p>
+                    <p>동의 완료 상태에서만 접수가 완료됩니다. (미완료 시 동의 페이지로 안내)</p>
                 </div>
                 <div class="card box col6">
                     <h3>확인 연락</h3>
@@ -1178,19 +1019,14 @@ $disclosure = [
                         <div class="alert err" role="alert"><?= h($errorMsg) ?></div>
                     <?php endif; ?>
 
-                    <form id="applyForm" method="post" action="#apply" autocomplete="on" novalidate>
+                    <!-- ✅ action 명확화: index.php#apply -->
+                    <form id="applyForm" method="post" action="index.php#apply" autocomplete="on" novalidate>
                         <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>" />
 
                         <!-- Honeypot -->
                         <input type="text" name="company_website" value="" tabindex="-1" autocomplete="off"
                             style="position:absolute; left:-9999px; width:1px; height:1px;"
                             aria-hidden="true" />
-
-                        <!-- ✅ 카카오 1초 접수 버튼(자동입력) -->
-                        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:8px;">
-                            <a class="kakaoBtn" href="kakao_login.php">🟨 카카오로 1초 접수(자동입력)</a>
-                            <span class="tiny">※ 카카오 프로필/전화번호(가능한 경우)로 자동 채움</span>
-                        </div>
 
                         <div class="row">
                             <div>
@@ -1232,6 +1068,7 @@ $disclosure = [
                             <textarea id="memo" name="memo" placeholder="상담 시 참고할 내용을 적어주세요."><?= h($old['memo']) ?></textarea>
                         </div>
 
+                        <!-- ✅ UX 업그레이드: “체크박스처럼 보이는” 카드 / 실제 checkbox 없음 -->
                         <div class="checks" aria-label="동의 항목">
 
                             <div class="consentCard" id="goConsentPrivacy" role="button" tabindex="0" aria-disabled="false">
@@ -1290,7 +1127,8 @@ $disclosure = [
                             <?php endif; ?>
                         </div>
 
-                        <button class="cta" type="submit" style="justify-self:start;" <?= $consentOk ? '' : 'disabled' ?>>
+                        <!-- ✅ 수정: disabled 제거(항상 클릭 가능) -->
+                        <button class="cta" type="submit" style="justify-self:start;">
                             상담 신청 접수
                         </button>
 
@@ -1365,10 +1203,7 @@ $disclosure = [
                 const el = document.querySelector(id);
                 if (!el) return;
                 e.preventDefault();
-                el.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'start'
-                });
+                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 history.replaceState(null, '', id);
             });
         });
@@ -1378,13 +1213,8 @@ $disclosure = [
         const onScroll = () => {
             topBtn.style.display = (window.scrollY > 600) ? 'block' : 'none';
         };
-        window.addEventListener('scroll', onScroll, {
-            passive: true
-        });
-        topBtn.addEventListener('click', () => window.scrollTo({
-            top: 0,
-            behavior: 'smooth'
-        }));
+        window.addEventListener('scroll', onScroll, { passive: true });
+        topBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
         onScroll();
 
         // ✅ 전화번호 하이픈 자동 포맷 (010-1234-5678 / 02 예외 포함)
@@ -1395,6 +1225,7 @@ $disclosure = [
             function formatPhoneKR(value) {
                 const digits = (value || '').replace(/\D+/g, '').slice(0, 11);
 
+                // 02(서울) 예외 처리
                 if (digits.startsWith('02')) {
                     if (digits.length <= 2) return digits;
                     if (digits.length <= 5) return digits.replace(/^(\d{2})(\d{1,3})$/, '$1-$2');
@@ -1402,6 +1233,7 @@ $disclosure = [
                     return digits.replace(/^(\d{2})(\d{4})(\d{1,4})$/, '$1-$2-$3');
                 }
 
+                // 일반(휴대폰/지역번호 3자리 가정)
                 if (digits.length <= 3) return digits;
                 if (digits.length <= 7) return digits.replace(/^(\d{3})(\d{1,4})$/, '$1-$2');
                 if (digits.length <= 10) return digits.replace(/^(\d{3})(\d{3})(\d{1,4})$/, '$1-$2-$3');
@@ -1414,12 +1246,10 @@ $disclosure = [
                 if (before !== formatted) phoneEl.value = formatted;
             }
 
-            phoneEl.addEventListener('input', onInput, {
-                passive: true
-            });
-            phoneEl.addEventListener('blur', onInput, {
-                passive: true
-            });
+            phoneEl.addEventListener('input', onInput, { passive: true });
+            phoneEl.addEventListener('blur', onInput, { passive: true });
+
+            // 초기값 포맷
             onInput();
         })();
 
@@ -1431,12 +1261,22 @@ $disclosure = [
             fd.append('action', 'preconsent');
 
             try {
-                const res = await fetch(location.href, {
+                const res = await fetch('index.php', { // ✅ location.href 대신 고정(해시 영향 제거)
                     method: 'POST',
                     body: fd,
                     credentials: 'same-origin'
                 });
-                const data = await res.json();
+
+                // ✅ JSON 깨짐 방어(php notice/warning 등)
+                const text = await res.text();
+                let data = null;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    console.log('[preconsent non-json response]', text);
+                    alert('서버 응답 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+                    return;
+                }
 
                 if (!data.ok) {
                     alert(data.message || '입력값을 확인해주세요.');
@@ -1471,13 +1311,18 @@ $disclosure = [
             });
         }
 
-        // ✅ 동의 없는데 접수 버튼 눌러지는 경우 방지
+        // ✅ 수정: 동의 미완료 상태에서 "접수" 누르면 -> 입력검증+동의페이지로 이동
         form.addEventListener('submit', (e) => {
             const consentOk = <?= $consentOk ? 'true' : 'false' ?>;
+
             if (!consentOk) {
                 e.preventDefault();
-                alert('동의가 완료되어야 접수할 수 있습니다. 입력 완료 후 동의 페이지에서 동의를 완료해주세요.');
+                alert('동의가 완료되어야 접수할 수 있습니다. 입력값 확인 후 동의 페이지로 이동합니다.');
+                preConsentAndGo();
+                return;
             }
+
+            // consentOk=true면 정상 submit -> PHP가 DB 저장 처리
         });
     </script>
 </body>
