@@ -1354,22 +1354,59 @@ old:
 
     <button class="topbtn" id="topbtn" type="button" aria-label="맨 위로">↑</button>
     <script>
-        // ✅ 서버 에러/성공/카카오 메시지 -> 팝업(alert)
+        // ================================
+        // ✅ 서버 메시지 + 카카오 디버그 alert
+        // ================================
         (function() {
-            const err = <?= json_encode($errorMsg, JSON_UNESCAPED_UNICODE) ?>;
-            const ok = <?= json_encode($successMsg, JSON_UNESCAPED_UNICODE) ?>;
+
+            const err = <?= json_encode($errorMsg ?? '', JSON_UNESCAPED_UNICODE) ?>;
+            const ok = <?= json_encode($successMsg ?? '', JSON_UNESCAPED_UNICODE) ?>;
 
             const kerr = <?= json_encode($kakaoErr ?? '', JSON_UNESCAPED_UNICODE) ?>;
             const kok = <?= json_encode($kakaoOkMsg ?? '', JSON_UNESCAPED_UNICODE) ?>;
+
+            // 🔥 현재 PHP에서 넘어온 성함 value
+            const kakaoName = <?= json_encode($old['name'] ?? '', JSON_UNESCAPED_UNICODE) ?>;
+            const kakaoPhone = <?= json_encode($old['phone'] ?? '', JSON_UNESCAPED_UNICODE) ?>;
 
             if (err) alert(err);
             if (ok) alert(ok);
 
             if (kerr) alert(kerr);
-            if (kok) alert(kok);
+
+            if (kok) {
+                alert(
+                    kok +
+                    "\n\n[현재 PHP 성함 값]\n" + kakaoName +
+                    "\n\n[현재 PHP 연락처 값]\n" + kakaoPhone
+                );
+            }
+
         })();
 
-        // Smooth scroll (in-page)
+
+        // ================================
+        // ✅ DOM 로드 후 실제 input 값 확인
+        // ================================
+        window.addEventListener('DOMContentLoaded', function() {
+
+            const inputName = document.getElementById('name');
+            const inputPhone = document.getElementById('phone');
+
+            if (inputName) {
+                console.log('🔎 input name value =', inputName.value);
+            }
+
+            if (inputPhone) {
+                console.log('🔎 input phone value =', inputPhone.value);
+            }
+
+        });
+
+
+        // ================================
+        // Smooth scroll
+        // ================================
         document.querySelectorAll('a[href^="#"]').forEach(a => {
             a.addEventListener('click', (e) => {
                 const id = a.getAttribute('href');
@@ -1385,21 +1422,33 @@ old:
             });
         });
 
+
+        // ================================
         // Top button
+        // ================================
         const topBtn = document.getElementById('topbtn');
         const onScroll = () => {
-            topBtn.style.display = (window.scrollY > 600) ? 'block' : 'none';
+            if (topBtn) {
+                topBtn.style.display = (window.scrollY > 600) ? 'block' : 'none';
+            }
         };
         window.addEventListener('scroll', onScroll, {
             passive: true
         });
-        topBtn.addEventListener('click', () => window.scrollTo({
-            top: 0,
-            behavior: 'smooth'
-        }));
+        if (topBtn) {
+            topBtn.addEventListener('click', () =>
+                window.scrollTo({
+                    top: 0,
+                    behavior: 'smooth'
+                })
+            );
+        }
         onScroll();
 
-        // ✅ 전화번호 하이픈 자동 포맷 (010-1234-5678 / 02 예외 포함)
+
+        // ================================
+        // ✅ 전화번호 자동 하이픈
+        // ================================
         (function() {
             const phoneEl = document.getElementById('phone');
             if (!phoneEl) return;
@@ -1407,7 +1456,6 @@ old:
             function formatPhoneKR(value) {
                 const digits = (value || '').replace(/\D+/g, '').slice(0, 11);
 
-                // 02(서울) 예외 처리
                 if (digits.startsWith('02')) {
                     if (digits.length <= 2) return digits;
                     if (digits.length <= 5) return digits.replace(/^(\d{2})(\d{1,3})$/, '$1-$2');
@@ -1415,7 +1463,6 @@ old:
                     return digits.replace(/^(\d{2})(\d{4})(\d{1,4})$/, '$1-$2-$3');
                 }
 
-                // 일반(휴대폰/지역번호 3자리 가정)
                 if (digits.length <= 3) return digits;
                 if (digits.length <= 7) return digits.replace(/^(\d{3})(\d{1,4})$/, '$1-$2');
                 if (digits.length <= 10) return digits.replace(/^(\d{3})(\d{3})(\d{1,4})$/, '$1-$2-$3');
@@ -1435,11 +1482,13 @@ old:
                 passive: true
             });
 
-            // 초기값 포맷
             onInput();
         })();
 
-        // ✅ 동의 이동 전 사전검증 + draft 저장(AJAX)
+
+        // ================================
+        // ✅ 동의 이동 전 사전검증
+        // ================================
         const form = document.getElementById('applyForm');
 
         async function preConsentAndGo() {
@@ -1452,6 +1501,7 @@ old:
                     body: fd,
                     credentials: 'same-origin'
                 });
+
                 const data = await res.json();
 
                 if (!data.ok) {
@@ -1460,8 +1510,9 @@ old:
                 }
 
                 location.href = 'consent.php?return=index.php#apply';
+
             } catch (e) {
-                alert('네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+                alert('네트워크 오류가 발생했습니다.');
             }
         }
 
@@ -1487,12 +1538,11 @@ old:
             });
         }
 
-        // ✅ 동의 없는데 접수 버튼 눌러지는 경우 방지
-        form.addEventListener('submit', (e) => {
+        form?.addEventListener('submit', (e) => {
             const consentOk = <?= $consentOk ? 'true' : 'false' ?>;
             if (!consentOk) {
                 e.preventDefault();
-                alert('동의가 완료되어야 접수할 수 있습니다. 입력 완료 후 동의 페이지에서 동의를 완료해주세요.');
+                alert('동의가 완료되어야 접수할 수 있습니다.');
             }
         });
     </script>
