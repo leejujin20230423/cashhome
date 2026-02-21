@@ -1,39 +1,12 @@
-<?php
-declare(strict_types=1); ?>
+<?php 
+declare(strict_types=1);
 
 
-<?php if (!empty($_GET['debug'])): ?>
-<pre style="color:#0f0;background:#000;padding:12px;border-radius:12px;white-space:pre-wrap;">
-[INDEX DEBUG]
-time: <?= date('Y-m-d H:i:s') ?>
-
-session_id(): <?= session_id() ?>
-session_name(): <?= session_name() ?>
-
-cookie in request(<?= session_name() ?>):
-<?php var_dump($_COOKIE[session_name()] ?? null); ?>
-
-GET sid (from callback debug):
-<?php var_dump($_GET['sid'] ?? null); ?>
-
-__debug_callback:
-<?php var_dump($_SESSION['__debug_callback'] ?? null); ?>
-
-kakao_profile:
-<?php var_dump($_SESSION['kakao_profile'] ?? null); ?>
-
-full session keys:
-<?php var_dump(array_keys($_SESSION)); ?>
-</pre>
-<?php endif; ?>
-
-<?php
-/**
- * index.php (전체)
- * - 랜딩 + 상담신청
- * - 카카오 로그인 후 세션(kakao_profile) 값으로 성함/연락처 자동 주입
- * - 디버그: kakao_ok 알럿에 PHP 값 + 실제 input DOM 값까지 같이 표시
- */
+//  * index.php (전체)
+//  * - 랜딩 + 상담신청
+//  * - 카카오 로그인 후 세션(kakao_profile) 값으로 성함/연락처 자동 주입
+//  * - 디버그: kakao_ok 알럿에 PHP 값 + 실제 input DOM 값까지 같이 표시
+//  */
 
 /* =========================================================
  * ✅ 세션 부트스트랩 (kakao_login / kakao_callback 과 동일하게)
