@@ -2,9 +2,6 @@
 declare(strict_types=1);
 
 
-echo "카카오 로그인 콜백 처리 중..."; // 디버그용 출력
-
-exit;
 
 $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
       || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443);
