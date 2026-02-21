@@ -990,6 +990,37 @@ $disclosure = [
             filter: grayscale(20%);
         }
 
+        /* ===== 카카오 버튼 커스텀 ===== */
+        .kakao-btn {
+            padding: 10px 14px;
+            border-radius: 999px;
+            font-weight: 800;
+            font-size: 13px;
+            text-decoration: none;
+            display: inline-block;
+            border: 0;
+            cursor: pointer;
+            transition: all .18s ease;
+            white-space: nowrap;
+
+            /* 카카오 느낌 + 은은한 그라데이션 */
+            background: linear-gradient(135deg, #FEE500 0%, #F7D800 100%);
+            color: #111;
+
+            box-shadow: 0 8px 20px rgba(0, 0, 0, .25);
+        }
+
+        .kakao-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 26px rgba(0, 0, 0, .35);
+            background: linear-gradient(135deg, #FFE812 0%, #F5D000 100%);
+        }
+
+        .kakao-btn:active {
+            transform: translateY(0px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, .25);
+        }
+
         @media (max-width: 920px) {
             .hero {
                 grid-template-columns: 1fr;
@@ -1269,10 +1300,21 @@ $disclosure = [
                             <?php endif; ?>
                         </div>
 
-                        <button class="cta" type="submit" style="justify-self:start;" <?= $consentOk ? '' : 'disabled' ?>>
-                            상담 신청 접수
-                        </button>
+                        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
 
+                            <!-- 카카오 1초접수 -->
+                            <a href="kakao_login.php?return=index.php#apply"
+                                class="kakao-btn">
+                                💬 카카오 1초접수
+                            </a>
+
+                            <!-- 상담 신청 접수 -->
+                            <button class="cta" type="submit"
+                                <?= $consentOk ? '' : 'disabled' ?>>
+                                상담 신청 접수
+                            </button>
+
+                        </div>
                         <div class="tiny">
                             ※ 입력 오류가 있으면 팝업으로 안내됩니다. 동의는 입력 완료 후 진행됩니다.
                         </div>

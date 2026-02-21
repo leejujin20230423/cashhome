@@ -48,9 +48,6 @@ $authorizeUrl = 'https://kauth.kakao.com/oauth/authorize?' . http_build_query($p
 // header('Location: ' . $authorizeUrl);
 // exit;
 
-header('Content-Type: text/plain; charset=utf-8');
-echo $authorizeUrl;
-exit;
 
 header('Location: ' . $authorizeUrl);
 exit;
