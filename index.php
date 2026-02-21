@@ -1,4 +1,5 @@
-<?php 
+<?php
+
 declare(strict_types=1);
 
 
@@ -1323,7 +1324,11 @@ COOKIE(PHPSESSID):
                         </div>
 
                         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                            <a href="kakao_login.php?return=index.php#apply" class="kakao-btn" aria-disabled="">💬 카카오 1초접수</a>
+                            <a href="javascript:void(0);"
+                                class="kakao-btn kakao-disabled"
+                                onclick="alert('현재 카카오 1초접수는 준비 중입니다.'); return false;">
+                                🔒 카카오 1초접수 (준비중)
+                            </a>
 
                             <button class="cta" type="submit" <?= $consentOk ? '' : 'disabled' ?>>
                                 상담 신청 접수
