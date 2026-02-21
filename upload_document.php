@@ -202,8 +202,12 @@ try {
 
 } catch (Throwable $e) {
     error_log('[UPLOAD_DOC_ERROR] '.$e->getMessage());
+
+    // ✅ 디버그 모드일 때만 실제 에러를 응답으로 내려줌
+    $debug = !empty($_GET['debug']) || !empty($_POST['debug']);
+
     respond(false, '서류 업로드 중 오류 발생', [
-        // 운영 중이면 아래는 숨기는 게 안전하지만, 지금 디버깅 중이면 도움 됨
-        'error' => $e->getMessage(),
+        'error' => $debug ? $e->getMessage() : null,
+        'trace' => $debug ? $e->getTraceAsString() : null,
     ], 500);
 }
