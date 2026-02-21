@@ -210,7 +210,21 @@ $_SESSION['kakao_profile'] = [
     'phone_number' => $phone,
 ];
 
+// 디버그: callback에서 세션이 실제로 저장되는지
+$_SESSION['__debug_callback'] = [
+  'time' => date('Y-m-d H:i:s'),
+  'session_id' => session_id(),
+  'cookie_name' => session_name(),
+  'cookie_in_request' => $_COOKIE[session_name()] ?? null,
+  'kakao_profile' => $_SESSION['kakao_profile'] ?? null,
+];
 /* =========================================================
  * 8) 리다이렉트
  * ========================================================= */
-redirect_with_query($return, ['kakao_ok' => '1']);
+redirect_with_query($return, [
+  'kakao_ok' => '1',
+  'sid' => session_id(),   // ✅ 디버그용
+]);
+
+
+// redirect_with_query($return, ['kakao_ok' => '1']);

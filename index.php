@@ -1,7 +1,33 @@
 <?php
+declare(strict_types=1); ?>
 
-declare(strict_types=1);
 
+<?php if (!empty($_GET['debug'])): ?>
+<pre style="color:#0f0;background:#000;padding:12px;border-radius:12px;white-space:pre-wrap;">
+[INDEX DEBUG]
+time: <?= date('Y-m-d H:i:s') ?>
+
+session_id(): <?= session_id() ?>
+session_name(): <?= session_name() ?>
+
+cookie in request(<?= session_name() ?>):
+<?php var_dump($_COOKIE[session_name()] ?? null); ?>
+
+GET sid (from callback debug):
+<?php var_dump($_GET['sid'] ?? null); ?>
+
+__debug_callback:
+<?php var_dump($_SESSION['__debug_callback'] ?? null); ?>
+
+kakao_profile:
+<?php var_dump($_SESSION['kakao_profile'] ?? null); ?>
+
+full session keys:
+<?php var_dump(array_keys($_SESSION)); ?>
+</pre>
+<?php endif; ?>
+
+<?php
 /**
  * index.php (전체)
  * - 랜딩 + 상담신청
