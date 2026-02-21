@@ -1,13 +1,49 @@
 <?php
+
 declare(strict_types=1);
 
-require __DIR__ . '/session_bootstrap.php';
+/**
+ * kakao_callback.php
+ * - code/state 수신
+ * - state 검증
+ * - 토큰 발급
+ * - 사용자 정보 조회
+ * - 세션에 kakao_profile 저장
+ * - return으로 kakao_ok=1 또는 kakao_error=... 붙여 리다이렉트
+ */
 
+/* =========================================================
+ * ✅ 세션 부트스트랩 (index.php / login 과 동일하게)
+ * ========================================================= */
+$isHttps = (
+    (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+    || (!empty($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443)
+    || (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')
+);
+
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    // 필요하면 도메인 고정 (서브도메인 공유 필요 시 .bizstore.co.kr)
+    // 'domain' => 'cashhome.bizstore.co.kr',
+    'secure' => $isHttps,
+    'httponly' => true,
+    'samesite' => 'Lax',
+]);
+session_start();
+
+/* =========================
+ * Kakao OAuth Config
+ * ========================= */
 const KAKAO_REST_API_KEY = 'd6cf1b953dfb5b853674b0c265090b1b';
-const KAKAO_CLIENT_SECRET = 'YqcjxkwRyqjK813eckdVyn4eAP87q4U7';
+const KAKAO_CLIENT_SECRET = 'YqcjxkwRyqjK813eckdVyn4eAP87q4U7'; // 없으면 '' 가능
 const KAKAO_REDIRECT_URI = 'https://cashhome.bizstore.co.kr/kakao_callback.php';
 
-function http_post_form(string $url, array $data): array {
+/* =========================
+ * HTTP helpers
+ * ========================= */
+function http_post_form(string $url, array $data): array
+{
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_POST => true,
@@ -23,7 +59,8 @@ function http_post_form(string $url, array $data): array {
     return [$code, $body !== false ? (string)$body : '', $err];
 }
 
-function http_get(string $url, array $headers = []): array {
+function http_get(string $url, array $headers = []): array
+{
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
@@ -37,12 +74,17 @@ function http_get(string $url, array $headers = []): array {
     return [$code, $body !== false ? (string)$body : '', $err];
 }
 
-function json_array(string $json): array {
+function json_array(string $json): array
+{
     $d = json_decode($json, true);
     return is_array($d) ? $d : [];
 }
 
-function normalize_phone_kr(string $phone): string {
+/* =========================
+ * 전화번호 정규화 (+82 -> 0xxx)
+ * ========================= */
+function normalize_phone_kr(string $phone): string
+{
     $p = trim($phone);
     if ($p === '') return '';
     $p = str_replace([' ', '-', '(', ')'], '', $p);
@@ -54,13 +96,18 @@ function normalize_phone_kr(string $phone): string {
     }
     $digits = preg_replace('/\D+/', '', $p) ?? '';
     if ($digits === '') return '';
+
     if (strlen($digits) === 11) return preg_replace('/^(\d{3})(\d{4})(\d{4})$/', '$1-$2-$3', $digits) ?? $digits;
     if (strlen($digits) === 10) return preg_replace('/^(\d{3})(\d{3})(\d{4})$/', '$1-$2-$3', $digits) ?? $digits;
+
     return $digits;
 }
 
-/** return(url+hash) 보존하면서 query 붙여 redirect */
-function redirect_with_query(string $return, array $q): void {
+/* =========================================================
+ * return(url+hash) 보존하면서 query 붙여 redirect
+ * ========================================================= */
+function redirect_with_query(string $return, array $q): void
+{
     $u = parse_url($return);
     $path  = $u['path'] ?? 'index.php';
     $query = $u['query'] ?? '';
@@ -78,14 +125,23 @@ function redirect_with_query(string $return, array $q): void {
     exit;
 }
 
+/* =========================================================
+ * 1) return 복원
+ * ========================================================= */
 $return = (string)($_SESSION['kakao_return'] ?? 'index.php#apply');
 unset($_SESSION['kakao_return']);
 
+/* =========================================================
+ * 2) 카카오 에러 응답 처리
+ * ========================================================= */
 if (!empty($_GET['error'])) {
     $msg = (string)($_GET['error_description'] ?? $_GET['error']);
     redirect_with_query($return, ['kakao_error' => $msg]);
 }
 
+/* =========================================================
+ * 3) code/state 확인
+ * ========================================================= */
 $code  = (string)($_GET['code'] ?? '');
 $state = (string)($_GET['state'] ?? '');
 
@@ -93,55 +149,68 @@ if ($code === '' || $state === '') {
     redirect_with_query($return, ['kakao_error' => '콜백에 code/state 없음']);
 }
 
+/* =========================================================
+ * 4) state 검증
+ * ========================================================= */
 if (empty($_SESSION['kakao_oauth_state']) || !hash_equals((string)$_SESSION['kakao_oauth_state'], $state)) {
-    // ✅ 여기 걸리면: 세션 유지 실패(쿠키 secure/도메인/https 판별 문제) 가능성이 가장 큼
     redirect_with_query($return, ['kakao_error' => 'state 검증 실패(세션 문제)']);
 }
 unset($_SESSION['kakao_oauth_state']);
 
-// 1) 토큰 발급
+/* =========================================================
+ * 5) 토큰 발급
+ * ========================================================= */
 $tokenReq = [
     'grant_type'   => 'authorization_code',
     'client_id'    => KAKAO_REST_API_KEY,
     'redirect_uri' => KAKAO_REDIRECT_URI,
     'code'         => $code,
 ];
+
 if (KAKAO_CLIENT_SECRET !== '') {
     $tokenReq['client_secret'] = KAKAO_CLIENT_SECRET;
 }
 
 [$http, $body, $err] = http_post_form('https://kauth.kakao.com/oauth/token', $tokenReq);
+
 if ($http !== 200) {
     error_log('[KAKAO TOKEN FAIL] http=' . $http . ' err=' . $err . ' body=' . $body);
-    redirect_with_query($return, ['kakao_error' => '토큰 발급 실패(HTTP '.$http.')']);
+    redirect_with_query($return, ['kakao_error' => '토큰 발급 실패(HTTP ' . $http . ')']);
 }
 
 $token = json_array($body);
 $accessToken = (string)($token['access_token'] ?? '');
+
 if ($accessToken === '') {
     redirect_with_query($return, ['kakao_error' => 'access_token 없음']);
 }
 
-// 2) 사용자 정보 조회
+/* =========================================================
+ * 6) 사용자 정보 조회
+ * ========================================================= */
 [$http2, $body2, $err2] = http_get('https://kapi.kakao.com/v2/user/me', [
     'Authorization: Bearer ' . $accessToken,
 ]);
+
 if ($http2 !== 200) {
     error_log('[KAKAO ME FAIL] http=' . $http2 . ' err=' . $err2 . ' body=' . $body2);
-    redirect_with_query($return, ['kakao_error' => '사용자정보 조회 실패(HTTP '.$http2.')']);
+    redirect_with_query($return, ['kakao_error' => '사용자정보 조회 실패(HTTP ' . $http2 . ')']);
 }
 
 $me = json_array($body2);
-
 $nickname = (string)($me['kakao_account']['profile']['nickname'] ?? '');
 $phoneRaw = (string)($me['kakao_account']['phone_number'] ?? '');
 $phone = normalize_phone_kr($phoneRaw);
 
-// ✅ 저장(여기가 index.php에서 읽는 값)
+/* =========================================================
+ * 7) 세션 저장
+ * ========================================================= */
 $_SESSION['kakao_profile'] = [
     'nickname' => $nickname,
     'phone_number' => $phone,
 ];
 
-// 리다이렉트
+/* =========================================================
+ * 8) 리다이렉트
+ * ========================================================= */
 redirect_with_query($return, ['kakao_ok' => '1']);
