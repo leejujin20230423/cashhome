@@ -1,51 +1,15 @@
 <?php
+
 declare(strict_types=1);
-session_start();
-
-// // 테스트: 세션이 유지되는지 확인용(새로고침마다 유지되어야 함)
-// if (!isset($_SESSION['__test'])) {
-//     $_SESSION['__test'] = 'set@' . date('H:i:s');
-// }
-
-// echo "Hello, Cashhome! This is the landing page (index.php)\n";
-
-// if (!empty($_GET['debug'])) {
-//     echo "<pre style='color:#0f0;background:#000;padding:15px;border-radius:12px;font-size:14px;white-space:pre-wrap;'>";
-//     echo "==== 0. PHP SESSION ====\n";
-//     var_dump([
-//         'session_id' => session_id(),
-//         'cookie_name' => session_name(),
-//         'cookie_has' => isset($_COOKIE[session_name()]) ? 'YES' : 'NO',
-//         'cookie_value' => $_COOKIE[session_name()] ?? null,
-//         '__test' => $_SESSION['__test'] ?? null,
-//     ]);
-
-//     echo "\n==== 1. kakao_profile ====\n";
-//     var_dump($_SESSION['kakao_profile'] ?? null);
-
-//     echo "\n==== 2. draft ====\n";
-//     var_dump($_SESSION['cashhome_inquiry_draft'] ?? null);
-
-//     echo "\n==== 3. GET ====\n";
-//     var_dump($_GET);
-
-//     echo "\n==== 4. FULL _SESSION ====\n";
-//     var_dump($_SESSION);
-
-//     echo "</pre>";
-// }
-// exit; // ✅ 여기서 멈춰서 테스트만 보이게 함
-/**
- * ECASH (이케쉬대부) - index.php
- * - 랜딩페이지 + 상담신청
- * - 동의는 consent.php에서만 완료되며(index.php 체크박스/영역 클릭 시 consent.php로 이동)
- * - 동의 완료(세션) 상태일 때만 접수 가능
- * - 동의 클릭 전 입력값 필수 검증(누가 동의했는지 증적 확보 목적)
- * - 입력 오류는 팝업(alert)으로 안내
- * - 상담신청 저장: cashhome_1000_inquiries + cashhome_1100_consent_logs
- */
 
 session_start();
+
+if (!empty($_GET['reset'])) {
+    unset($_SESSION['cashhome_inquiry_draft'], $_SESSION['kakao_profile'], $_SESSION['kakao_oauth_state']);
+    header('Location: index.php#apply');
+    exit;
+}
+
 header('X-Frame-Options: SAMEORIGIN');
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: strict-origin-when-cross-origin');
@@ -62,16 +26,13 @@ function h(string $s): string
 const DB_HOST = '49.247.29.76';
 const DB_NAME = 'cashhome';
 const DB_USER = 'lokia';
-const DB_PASS = 'lokia0528**'; // <-- 운영 환경에 맞게 관리(권장: env)
+const DB_PASS = 'lokia0528**';
 
 /**
  * 개인정보처리방침 버전
  */
 const PRIVACY_POLICY_VERSION = 'v1';
 
-/**
- * PDO 연결 함수
- */
 function cashhome_pdo(): PDO
 {
     static $pdo = null;
@@ -86,19 +47,6 @@ function cashhome_pdo(): PDO
     return $pdo;
 }
 
-/**
- * ✅ 동의 완료 여부(세션 기반)
- * consent.php에서 세팅되는 형태(당신이 준 consent.php 기준):
- * $_SESSION['cashhome_consent'] = [
- *   'privacy' => bool,
- *   'marketing' => bool,
- *   'privacy_at' => 'YYYY-mm-dd HH:ii:ss' | null,
- *   'marketing_at' => 'YYYY-mm-dd HH:ii:ss' | null,
- *   'privacy_ver' => 'v1',
- *   'marketing_ver' => 'v1',
- *   // (옵션) 'version','consented_at' 형태도 호환 처리
- * ];
- */
 function cashhome_consent_ok(): bool
 {
     if (empty($_SESSION['cashhome_consent']) || !is_array($_SESSION['cashhome_consent'])) return false;
@@ -108,26 +56,16 @@ function cashhome_consent_ok(): bool
     $marketing = !empty($c['marketing']);
     if (!$privacy || !$marketing) return false;
 
-    // consent.php(최신) 키 우선
     $hasPrivacyAt = !empty($c['privacy_at']);
     $hasMarketingAt = !empty($c['marketing_at']);
     $hasPrivacyVer = !empty($c['privacy_ver']);
     $hasMarketingVer = !empty($c['marketing_ver']);
 
-    // (이전 형태) version/consented_at도 허용
     $hasLegacy = (!empty($c['version']) && !empty($c['consented_at']));
 
-    if (($hasPrivacyAt && $hasMarketingAt && $hasPrivacyVer && $hasMarketingVer) || $hasLegacy) {
-        return true;
-    }
-    return false;
+    return (($hasPrivacyAt && $hasMarketingAt && $hasPrivacyVer && $hasMarketingVer) || $hasLegacy);
 }
 
-/**
- * ✅ 입력값 검증 (동의 페이지로 이동 전 / 최종 접수 전 공통 사용)
- * - 메모는 선택
- * - 성함/연락처/희망금액/자금용도는 필수
- */
 function validate_inquiry_input(array $in): array
 {
     $name = trim((string)($in['name'] ?? ''));
@@ -138,34 +76,23 @@ function validate_inquiry_input(array $in): array
 
     $errors = [];
 
-    if ($name === '' || mb_strlen($name) < 2) {
-        $errors[] = '성함을 2자 이상 입력해주세요.';
-    }
+    if ($name === '' || mb_strlen($name) < 2) $errors[] = '성함을 2자 이상 입력해주세요.';
 
     $phoneDigits = preg_replace('/\D+/', '', $phone) ?? '';
     if ($phoneDigits === '' || strlen($phoneDigits) < 9 || strlen($phoneDigits) > 12) {
         $errors[] = '연락처를 정확히 입력해주세요.';
     }
 
-    // 희망금액 필수
     if ($amount === '') {
         $errors[] = '희망금액을 입력해주세요.';
     } else {
         $amountDigits = preg_replace('/\D+/', '', $amount);
-        if ($amountDigits === null || $amountDigits === '') {
-            $errors[] = '희망금액은 숫자로 입력해주세요.';
-        }
+        if ($amountDigits === null || $amountDigits === '') $errors[] = '희망금액은 숫자로 입력해주세요.';
     }
 
-    // 자금용도 필수 (선택 안함 불가)
-    if ($purpose === '' || $purpose === '선택 안함') {
-        $errors[] = '자금용도를 선택해주세요.';
-    }
+    if ($purpose === '' || $purpose === '선택 안함') $errors[] = '자금용도를 선택해주세요.';
 
-    // 요청사항 선택 (길이만 제한)
-    if (mb_strlen($memo) > 1000) {
-        $errors[] = '요청사항은 1000자 이하로 입력해주세요.';
-    }
+    if (mb_strlen($memo) > 1000) $errors[] = '요청사항은 1000자 이하로 입력해주세요.';
 
     return [$errors, [
         'name' => $name,
@@ -181,11 +108,10 @@ if (empty($_SESSION['csrf_token'])) {
 }
 
 $consentOk = cashhome_consent_ok();
-
 $successMsg = '';
 $errorMsg = '';
 
-// ✅ 입력값 draft: 동의 페이지 갔다 와도 입력 유지
+// ✅ draft (입력값 유지)
 $draft = $_SESSION['cashhome_inquiry_draft'] ?? null;
 
 $old = [
@@ -196,52 +122,40 @@ $old = [
     'memo' => is_array($draft) ? (string)($draft['memo'] ?? '') : '',
 ];
 
-
-// ==========================================================
-// ✅🔥 카카오 로그인 → 자동입력 (완전 안정 버전)
-// ==========================================================
-
+/**
+ * ==========================================================
+ * ✅ 카카오 로그인 → 자동입력 (안정 버전)
+ * ==========================================================
+ */
 $kakaoErr = (string)($_GET['kakao_error'] ?? '');
-$kakaoOkMsg = !empty($_GET['kakao_ok'])
-    ? '카카오 로그인 완료! 성함이 자동 입력되었습니다.'
-    : '';
+$kakaoOkMsg = !empty($_GET['kakao_ok']) ? '카카오 로그인 완료! 성함이 자동 입력되었습니다.' : '';
+
+$kName = '';
+$kPhone = '';
 
 if (!empty($_SESSION['kakao_profile']) && is_array($_SESSION['kakao_profile'])) {
-
     $kp = $_SESSION['kakao_profile'];
-
     $kName  = trim((string)($kp['nickname'] ?? ''));
     $kPhone = trim((string)($kp['phone_number'] ?? ''));
 
-    // 👉 카카오 값이 존재하면 무조건 우선 적용
-    if ($kName !== '') {
-        $old['name'] = $kName;
-    }
+    // 카카오 값이 있으면 우선 적용
+    if ($kName !== '' && $kName !== '.') $old['name'] = $kName;
+    if ($kPhone !== '') $old['phone'] = $kPhone;
 
-    if ($kPhone !== '') {
-        $old['phone'] = $kPhone;
-    }
-
-    // 👉 draft 세션도 동기화 (동의 이동/새로고침 대비)
+    // draft 동기화
     $_SESSION['cashhome_inquiry_draft'] = $old;
 }
 
-// 2) ✅ 사전검증(preconsent)용 draft에도 반영(동의 누르기 전에 이름/폰 유지)
-if (empty($_SESSION['cashhome_inquiry_draft']) || !is_array($_SESSION['cashhome_inquiry_draft'])) {
-    $_SESSION['cashhome_inquiry_draft'] = $old;
-} else {
-    if ($kName !== '' && (empty($_SESSION['cashhome_inquiry_draft']['name']) || mb_strlen((string)$_SESSION['cashhome_inquiry_draft']['name']) < 2)) {
-        $_SESSION['cashhome_inquiry_draft']['name'] = $kName;
-    }
-    if ($kPhone !== '' && empty($_SESSION['cashhome_inquiry_draft']['phone'])) {
-        $_SESSION['cashhome_inquiry_draft']['phone'] = $kPhone;
+// ✅ '.' 강제 제거 (세션에 박혀있는 경우 대비)
+if (($old['name'] ?? '') === '.') {
+    $old['name'] = '';
+    if (is_array($_SESSION['cashhome_inquiry_draft'] ?? null)) {
+        $_SESSION['cashhome_inquiry_draft']['name'] = '';
     }
 }
-
 
 /**
- * ✅ 동의페이지 이동 전 사전검증 요청 (AJAX)
- * POST action=preconsent
+ * ✅ 사전검증(preconsent) 요청 (AJAX)
  */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') === 'preconsent') {
     header('Content-Type: application/json; charset=utf-8');
@@ -258,7 +172,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
         exit;
     }
 
-    // ✅ 누가 동의했는지 증적을 위해 입력값을 먼저 확보(세션 저장)
     $_SESSION['cashhome_inquiry_draft'] = $clean;
 
     echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
@@ -270,7 +183,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
  */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !== 'preconsent') {
 
-    // Honeypot (봇 방지)
     $hp = trim((string)($_POST['company_website'] ?? ''));
     if ($hp !== '') {
         $successMsg = '상담 신청이 접수되었습니다. 담당자가 확인 후 연락드리겠습니다.';
@@ -291,7 +203,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
                 'memo' => $clean['memo'],
             ];
 
-            // ✅ 동의 완료 필수
             if (!cashhome_consent_ok()) {
                 $errs[] = "개인정보/마케팅 동의가 필요합니다.\n입력 완료 후 동의 버튼을 눌러 동의페이지에서 동의를 완료해주세요.";
             }
@@ -309,16 +220,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
                 $purpose = $clean['purpose'];
                 $memo = $clean['memo'];
 
-                // ✅ 세션 동의 정보(증적)
                 $consent = $_SESSION['cashhome_consent'];
 
-                // consent.php(최신) 기반
                 $privacyVer = (string)($consent['privacy_ver'] ?? PRIVACY_POLICY_VERSION);
                 $marketingVer = (string)($consent['marketing_ver'] ?? 'v1');
                 $privacyAt = (string)($consent['privacy_at'] ?? '');
                 $marketingAt = (string)($consent['marketing_at'] ?? '');
 
-                // 레거시 호환
                 if ($privacyAt === '' && !empty($consent['consented_at'])) $privacyAt = (string)$consent['consented_at'];
                 if ($marketingAt === '' && !empty($consent['consented_at'])) $marketingAt = (string)$consent['consented_at'];
                 if ($privacyVer === '' && !empty($consent['version'])) $privacyVer = (string)$consent['version'];
@@ -329,7 +237,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
                     $pdo = cashhome_pdo();
                     $pdo->beginTransaction();
 
-                    // 1) 상담 신청 저장 (1000)
                     $stmt = $pdo->prepare("
                         INSERT INTO cashhome_1000_inquiries (
                             cashhome_1000_created_at,
@@ -368,28 +275,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
                         ':created_at' => $ts,
                         ':user_ip' => $ip !== '' ? $ip : null,
                         ':user_agent' => $ua !== '' ? mb_substr($ua, 0, 255) : null,
-
                         ':customer_name' => $name,
                         ':customer_phone' => $phone,
-
                         ':loan_amount' => $amount,
                         ':loan_purpose' => $purpose,
                         ':request_memo' => $memo !== '' ? $memo : null,
-
-                        // ✅ 동의 완료 후에만 여기까지 오므로 1 저장
                         ':agree_privacy' => 1,
                         ':privacy_policy_version' => $privacyVer,
                         ':privacy_agreed_at' => $privacyAt !== '' ? $privacyAt : $ts,
-
                         ':agree_marketing' => 1,
                         ':marketing_agreed_at' => $marketingAt !== '' ? $marketingAt : $ts,
-
                         ':status' => 'new',
                     ]);
 
                     $newId = (int)$pdo->lastInsertId();
 
-                    // 2) 동의 로그 저장 (1100) - privacy
                     $stmtP = $pdo->prepare("
                         INSERT INTO cashhome_1100_consent_logs (
                             cashhome_1100_inquiry_id,
@@ -417,7 +317,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
                         ':user_agent' => $ua !== '' ? mb_substr($ua, 0, 255) : null,
                     ]);
 
-                    // 3) 동의 로그 저장 (1100) - marketing
                     $stmtP->execute([
                         ':inquiry_id' => $newId,
                         ':consent_type' => 'marketing',
@@ -429,25 +328,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
 
                     $pdo->commit();
                 } catch (Throwable $e) {
-                    if (isset($pdo) && $pdo instanceof PDO && $pdo->inTransaction()) {
-                        $pdo->rollBack();
-                    }
+                    if (isset($pdo) && $pdo instanceof PDO && $pdo->inTransaction()) $pdo->rollBack();
                     error_log('[DB/CONSENT INSERT ERROR] ' . $e->getMessage());
                     $errorMsg = '일시적인 오류로 접수가 완료되지 않았습니다. 잠시 후 다시 시도해주세요.';
                 }
 
                 if ($errorMsg === '') {
-                    // CSRF rotate
                     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-
-                    // ✅ 접수 완료 후: 동의/입력 draft 정리
                     unset($_SESSION['cashhome_consent'], $_SESSION['cashhome_inquiry_draft']);
                     $consentOk = false;
 
                     $successMsg = '상담 신청이 접수되었습니다. 담당자가 확인 후 연락드리겠습니다.';
                     $old = ['name' => '', 'phone' => '', 'amount' => '', 'purpose' => '선택 안함', 'memo' => ''];
                 } else {
-                    // 오류가 나도 입력 draft는 유지
                     $_SESSION['cashhome_inquiry_draft'] = $clean;
                 }
             }
