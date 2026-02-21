@@ -1,26 +1,13 @@
 <?php
 declare(strict_types=1);
 
-header('Content-Type: text/plain; charset=utf-8');
-echo "FULL URL: " . (($_SERVER['REQUEST_SCHEME'] ?? '') . '://' . ($_SERVER['HTTP_HOST'] ?? '') . ($_SERVER['REQUEST_URI'] ?? '')) . "\n\n";
-echo "GET:\n";
-print_r($_GET);
-exit;
-
-/**
- * kakao_callback.php
- * - 카카오에서 돌아오면 토큰 발급 -> /v2/user/me 조회
- * - nickname(성함) 세션 저장
- * - ✅ 실패 원인을 URL query로 붙여 index.php에서 무조건 보이게 처리(세션 깨져도 OK)
- */
-
 $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
       || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443);
 
 session_set_cookie_params([
     'lifetime' => 0,
     'path' => '/',
-    'secure' => $https,   // ✅ HTTPS 자동 감지
+    'secure' => $https,
     'httponly' => true,
     'samesite' => 'Lax',
 ]);
@@ -36,9 +23,7 @@ function http_post_form(string $url, array $data): array {
         CURLOPT_POST => true,
         CURLOPT_POSTFIELDS => http_build_query($data),
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HTTPHEADER => [
-            'Content-Type: application/x-www-form-urlencoded;charset=utf-8',
-        ],
+        CURLOPT_HTTPHEADER => ['Content-Type: application/x-www-form-urlencoded;charset=utf-8'],
         CURLOPT_TIMEOUT => 15,
     ]);
     $body = curl_exec($ch);
@@ -79,7 +64,6 @@ function normalize_phone_kr(string $phone): string {
     }
     $digits = preg_replace('/\D+/', '', $p) ?? '';
     if ($digits === '') return '';
-
     if (strlen($digits) === 11) return preg_replace('/^(\d{3})(\d{4})(\d{4})$/', '$1-$2-$3', $digits) ?? $digits;
     if (strlen($digits) === 10) return preg_replace('/^(\d{3})(\d{3})(\d{4})$/', '$1-$2-$3', $digits) ?? $digits;
     return $digits;
@@ -88,7 +72,6 @@ function normalize_phone_kr(string $phone): string {
 /** return(url+hash) 보존하면서 query 붙여 redirect */
 function redirect_with_query(string $return, array $q): void {
     $u = parse_url($return);
-
     $path  = $u['path'] ?? 'index.php';
     $query = $u['query'] ?? '';
     $frag  = $u['fragment'] ?? '';
@@ -108,7 +91,6 @@ function redirect_with_query(string $return, array $q): void {
 $return = (string)($_SESSION['kakao_return'] ?? 'index.php#apply');
 unset($_SESSION['kakao_return']);
 
-// ✅ 카카오가 에러로 콜백을 호출했을 때
 if (!empty($_GET['error'])) {
     $msg = (string)($_GET['error_description'] ?? $_GET['error']);
     redirect_with_query($return, ['kakao_error' => $msg]);
@@ -118,12 +100,11 @@ $code  = (string)($_GET['code'] ?? '');
 $state = (string)($_GET['state'] ?? '');
 
 if ($code === '' || $state === '') {
-    // ✅ 콜백 직접 접속하면 여기 걸리는 게 정상
-    redirect_with_query($return, ['kakao_error' => '콜백에 code/state 없음(직접 접속 또는 카카오 설정 오류)']);
+    redirect_with_query($return, ['kakao_error' => '콜백에 code/state 없음']);
 }
 
 if (empty($_SESSION['kakao_oauth_state']) || !hash_equals((string)$_SESSION['kakao_oauth_state'], $state)) {
-    redirect_with_query($return, ['kakao_error' => 'state 검증 실패(세션 쿠키 유지 안 됨)']);
+    redirect_with_query($return, ['kakao_error' => 'state 검증 실패(세션 문제)']);
 }
 unset($_SESSION['kakao_oauth_state']);
 
@@ -134,14 +115,11 @@ $tokenReq = [
     'redirect_uri' => KAKAO_REDIRECT_URI,
     'code'         => $code,
 ];
-
-// ✅ Secret이 콘솔에서 ON일 때만 유효. 토큰 실패하면 이 줄 주석 처리 테스트!
 if (KAKAO_CLIENT_SECRET !== '') {
     $tokenReq['client_secret'] = KAKAO_CLIENT_SECRET;
 }
 
 [$http, $body, $err] = http_post_form('https://kauth.kakao.com/oauth/token', $tokenReq);
-
 if ($http !== 200) {
     error_log('[KAKAO TOKEN FAIL] http=' . $http . ' err=' . $err . ' body=' . $body);
     redirect_with_query($return, ['kakao_error' => '토큰 발급 실패(HTTP '.$http.')']);
@@ -150,7 +128,6 @@ if ($http !== 200) {
 $token = json_array($body);
 $accessToken = (string)($token['access_token'] ?? '');
 if ($accessToken === '') {
-    error_log('[KAKAO TOKEN NO ACCESS_TOKEN] body=' . $body);
     redirect_with_query($return, ['kakao_error' => 'access_token 없음']);
 }
 
@@ -158,7 +135,6 @@ if ($accessToken === '') {
 [$http2, $body2, $err2] = http_get('https://kapi.kakao.com/v2/user/me', [
     'Authorization: Bearer ' . $accessToken,
 ]);
-
 if ($http2 !== 200) {
     error_log('[KAKAO ME FAIL] http=' . $http2 . ' err=' . $err2 . ' body=' . $body2);
     redirect_with_query($return, ['kakao_error' => '사용자정보 조회 실패(HTTP '.$http2.')']);
@@ -169,7 +145,6 @@ $nickname = (string)($me['kakao_account']['profile']['nickname'] ?? '');
 $phoneRaw = (string)($me['kakao_account']['phone_number'] ?? '');
 $phone = normalize_phone_kr($phoneRaw);
 
-// ✅ 세션 저장 (세션 살아있으면 index에서 자동채움)
 $_SESSION['kakao_profile'] = [
     'nickname' => $nickname,
     'phone_number' => $phone,
