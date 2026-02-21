@@ -2,19 +2,17 @@
 declare(strict_types=1);
 session_start();
 
-const KAKAO_REST_API_KEY = 'd6cf1b953dfb5b853674b0c265090b1b';
-const KAKAO_CLIENT_SECRET = 'YqcjxkwRyqjK813eckdVyn4eAP87q4U7'; // 카카오 콘솔에 ON이면 필요 :contentReference[oaicite:2]{index=2}
-const KAKAO_REDIRECT_URI = 'https://your-domain.com/kakao_callback.php';
+const KAKAO_REST_API_KEY   = 'd6cf1b953dfb5b853674b0c265090b1b';
+const KAKAO_CLIENT_SECRET = 'YqcjxkwRyqjK813eckdVyn4eAP87q4U7'; // 콘솔에서 Client Secret 사용 ON일 때만
+const KAKAO_REDIRECT_URI  = 'https://cashhome.bizstore.co.kr/kakao_callback.php';
 
 $state = bin2hex(random_bytes(16));
 $_SESSION['kakao_oauth_state'] = $state;
 
-// 받고 싶은 동의항목(앱 설정에 있어야 함)
-// phone_number는 앱에서 동의항목 활성화+사용자 동의 필요
+// 필요 동의 항목
 $scope = [
-  'profile',        // 닉네임/프로필
-  // 'account_email', // 이메일이 필요하면
-  // 'phone_number',  // 전화번호(가능하면)
+  'profile',
+  // 'phone_number', // 전화번호는 설정/심사/동의항목 활성화가 되어 있어야 뜹니다.
 ];
 
 $q = http_build_query([
@@ -22,7 +20,7 @@ $q = http_build_query([
   'redirect_uri'  => KAKAO_REDIRECT_URI,
   'response_type' => 'code',
   'state'         => $state,
-  'scope'         => implode(',', $scope), // 추가 동의 요청 시 사용 :contentReference[oaicite:3]{index=3}
+  'scope'         => implode(',', $scope),
 ]);
 
 header('Location: https://kauth.kakao.com/oauth/authorize?' . $q);
