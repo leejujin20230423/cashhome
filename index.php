@@ -370,7 +370,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
                     $successMsg = '상담 신청이 접수되었습니다. 담당자가 확인 후 연락드리겠습니다.';
                     $old = ['name' => '', 'phone' => '', 'amount' => '', 'purpose' => '선택 안함', 'memo' => ''];
                 } else {
-                    $_SESSION['cashhome_inquiry_draft'] = $clean;
+                    // 에러가 없을 때만 draft 저장
+                    if (empty($errs)) {
+                        $_SESSION['cashhome_inquiry_draft'] = $clean;
+                    } else {
+                        unset($_SESSION['cashhome_inquiry_draft']); // 또는 아예 저장 안 함
+                    }
                 }
             }
         }
@@ -426,8 +431,14 @@ $disclosure = [
             --max: 1120px;
         }
 
-        * { box-sizing: border-box }
-        html, body { height: 100% }
+        * {
+            box-sizing: border-box
+        }
+
+        html,
+        body {
+            height: 100%
+        }
 
         body {
             margin: 0;
@@ -441,7 +452,9 @@ $disclosure = [
             line-height: 1.5;
         }
 
-        a { color: inherit }
+        a {
+            color: inherit
+        }
 
         .wrap {
             max-width: var(--max);
@@ -488,8 +501,17 @@ $disclosure = [
             letter-spacing: .5px;
         }
 
-        .brand strong { display: block; font-size: 14px; letter-spacing: .6px }
-        .brand span { display: block; font-size: 12px; color: var(--muted) }
+        .brand strong {
+            display: block;
+            font-size: 14px;
+            letter-spacing: .6px
+        }
+
+        .brand span {
+            display: block;
+            font-size: 12px;
+            color: var(--muted)
+        }
 
         .navlinks {
             display: flex;
@@ -538,7 +560,9 @@ $disclosure = [
             font-size: 13px;
         }
 
-        .btnGhost:hover { background: rgba(255, 255, 255, .05); }
+        .btnGhost:hover {
+            background: rgba(255, 255, 255, .05);
+        }
 
         /* ✅ 카카오 버튼(가벼운 스타일 추가) */
         .kakaoBtn {
@@ -555,6 +579,7 @@ $disclosure = [
             gap: 8px;
             cursor: pointer;
         }
+
         .kakaoBtn:hover {
             background: rgba(255, 255, 255, .09);
         }
@@ -574,7 +599,9 @@ $disclosure = [
             box-shadow: var(--shadow);
         }
 
-        .heroL { padding: 26px 22px; }
+        .heroL {
+            padding: 26px 22px;
+        }
 
         .kicker {
             display: inline-flex;
@@ -603,9 +630,17 @@ $disclosure = [
             letter-spacing: -0.6px;
         }
 
-        .sub { color: var(--muted); margin: 0 0 18px; font-size: 14px; }
+        .sub {
+            color: var(--muted);
+            margin: 0 0 18px;
+            font-size: 14px;
+        }
 
-        .bullets { display: grid; gap: 10px; margin: 14px 0 20px; }
+        .bullets {
+            display: grid;
+            gap: 10px;
+            margin: 14px 0 20px;
+        }
 
         .b {
             display: flex;
@@ -627,12 +662,28 @@ $disclosure = [
             margin-top: 1px;
         }
 
-        .b strong { display: block; font-size: 13px; }
-        .b span { display: block; font-size: 12px; color: var(--muted); }
+        .b strong {
+            display: block;
+            font-size: 13px;
+        }
 
-        .heroBtns { display: flex; gap: 10px; flex-wrap: wrap; }
+        .b span {
+            display: block;
+            font-size: 12px;
+            color: var(--muted);
+        }
 
-        .heroR { padding: 18px; display: grid; gap: 12px; }
+        .heroBtns {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .heroR {
+            padding: 18px;
+            display: grid;
+            gap: 12px;
+        }
 
         .mini {
             padding: 14px 14px;
@@ -641,8 +692,16 @@ $disclosure = [
             background: rgba(255, 255, 255, .03);
         }
 
-        .mini h3 { margin: 0 0 8px; font-size: 14px; }
-        .mini p { margin: 0; color: var(--muted); font-size: 12px; }
+        .mini h3 {
+            margin: 0 0 8px;
+            font-size: 14px;
+        }
+
+        .mini p {
+            margin: 0;
+            color: var(--muted);
+            font-size: 12px;
+        }
 
         .grid {
             display: grid;
@@ -651,16 +710,44 @@ $disclosure = [
             margin-top: 14px;
         }
 
-        .col4 { grid-column: span 4; }
-        .col6 { grid-column: span 6; }
-        .col12 { grid-column: span 12; }
+        .col4 {
+            grid-column: span 4;
+        }
 
-        .sectionTitle { margin: 26px 0 10px; font-size: 18px; letter-spacing: -0.2px; }
-        .sectionSub { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+        .col6 {
+            grid-column: span 6;
+        }
 
-        .box { padding: 18px; }
-        .box h3 { margin: 0 0 8px; font-size: 15px; }
-        .box p { margin: 0; color: var(--muted); font-size: 13px; }
+        .col12 {
+            grid-column: span 12;
+        }
+
+        .sectionTitle {
+            margin: 26px 0 10px;
+            font-size: 18px;
+            letter-spacing: -0.2px;
+        }
+
+        .sectionSub {
+            margin: 0 0 12px;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .box {
+            padding: 18px;
+        }
+
+        .box h3 {
+            margin: 0 0 8px;
+            font-size: 15px;
+        }
+
+        .box p {
+            margin: 0;
+            color: var(--muted);
+            font-size: 13px;
+        }
 
         .pill {
             display: inline-flex;
@@ -674,8 +761,14 @@ $disclosure = [
             font-size: 12px;
         }
 
-        .formWrap { padding: 18px; }
-        form { display: grid; gap: 10px; }
+        .formWrap {
+            padding: 18px;
+        }
+
+        form {
+            display: grid;
+            gap: 10px;
+        }
 
         .row {
             display: grid;
@@ -683,9 +776,14 @@ $disclosure = [
             gap: 10px;
         }
 
-        label { font-size: 12px; color: var(--muted); }
+        label {
+            font-size: 12px;
+            color: var(--muted);
+        }
 
-        input, select, textarea {
+        input,
+        select,
+        textarea {
             width: 100%;
             padding: 12px 12px;
             border-radius: 14px;
@@ -695,14 +793,23 @@ $disclosure = [
             outline: none;
         }
 
-        input:focus, select:focus, textarea:focus {
+        input:focus,
+        select:focus,
+        textarea:focus {
             border-color: rgba(110, 231, 255, .55);
             box-shadow: 0 0 0 3px rgba(110, 231, 255, .12);
         }
 
-        textarea { min-height: 110px; resize: vertical; }
+        textarea {
+            min-height: 110px;
+            resize: vertical;
+        }
 
-        .checks { display: grid; gap: 10px; margin-top: 6px; }
+        .checks {
+            display: grid;
+            gap: 10px;
+            margin-top: 6px;
+        }
 
         .consentCard {
             display: flex;
@@ -724,7 +831,9 @@ $disclosure = [
             border-color: rgba(234, 240, 255, .18);
         }
 
-        .consentCard:active { transform: translateY(0px); }
+        .consentCard:active {
+            transform: translateY(0px);
+        }
 
         .consentIcon {
             width: 38px;
@@ -758,7 +867,10 @@ $disclosure = [
             box-shadow: 0 0 16px rgba(110, 231, 255, .55);
         }
 
-        .consentBody { flex: 1 1 auto; min-width: 0 }
+        .consentBody {
+            flex: 1 1 auto;
+            min-width: 0
+        }
 
         .consentTitle {
             font-weight: 900;
@@ -825,8 +937,13 @@ $disclosure = [
             font-size: 13px;
         }
 
-        .alert.ok { border-color: rgba(110, 231, 255, .35); }
-        .alert.err { border-color: rgba(255, 120, 120, .35); }
+        .alert.ok {
+            border-color: rgba(110, 231, 255, .35);
+        }
+
+        .alert.err {
+            border-color: rgba(255, 120, 120, .35);
+        }
 
         .footer {
             margin-top: 22px;
@@ -841,13 +958,32 @@ $disclosure = [
             gap: 14px;
         }
 
-        .kv { display: grid; gap: 6px; }
-        .kv div { display: flex; gap: 10px; align-items: flex-start; }
-        .kv b { min-width: 110px; color: rgba(234, 240, 255, .85); }
+        .kv {
+            display: grid;
+            gap: 6px;
+        }
 
-        .hr { height: 1px; background: var(--line); margin: 14px 0; }
+        .kv div {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+        }
 
-        .tiny { font-size: 11px; color: rgba(157, 176, 208, .9); }
+        .kv b {
+            min-width: 110px;
+            color: rgba(234, 240, 255, .85);
+        }
+
+        .hr {
+            height: 1px;
+            background: var(--line);
+            margin: 14px 0;
+        }
+
+        .tiny {
+            font-size: 11px;
+            color: rgba(157, 176, 208, .9);
+        }
 
         .topbtn {
             position: fixed;
@@ -864,14 +1000,33 @@ $disclosure = [
             display: none;
         }
 
-        button[disabled] { opacity: .45; cursor: not-allowed; filter: grayscale(20%); }
+        button[disabled] {
+            opacity: .45;
+            cursor: not-allowed;
+            filter: grayscale(20%);
+        }
 
         @media (max-width: 920px) {
-            .hero { grid-template-columns: 1fr; }
-            .row { grid-template-columns: 1fr; }
-            .col4, .col6 { grid-column: span 12; }
-            h1 { font-size: 30px; }
-            .footer .cols { grid-template-columns: 1fr; }
+            .hero {
+                grid-template-columns: 1fr;
+            }
+
+            .row {
+                grid-template-columns: 1fr;
+            }
+
+            .col4,
+            .col6 {
+                grid-column: span 12;
+            }
+
+            h1 {
+                font-size: 30px;
+            }
+
+            .footer .cols {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -1223,8 +1378,13 @@ $disclosure = [
         const onScroll = () => {
             topBtn.style.display = (window.scrollY > 600) ? 'block' : 'none';
         };
-        window.addEventListener('scroll', onScroll, { passive: true });
-        topBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+        window.addEventListener('scroll', onScroll, {
+            passive: true
+        });
+        topBtn.addEventListener('click', () => window.scrollTo({
+            top: 0,
+            behavior: 'smooth'
+        }));
         onScroll();
 
         // ✅ 전화번호 하이픈 자동 포맷 (010-1234-5678 / 02 예외 포함)
@@ -1254,8 +1414,12 @@ $disclosure = [
                 if (before !== formatted) phoneEl.value = formatted;
             }
 
-            phoneEl.addEventListener('input', onInput, { passive: true });
-            phoneEl.addEventListener('blur', onInput, { passive: true });
+            phoneEl.addEventListener('input', onInput, {
+                passive: true
+            });
+            phoneEl.addEventListener('blur', onInput, {
+                passive: true
+            });
             onInput();
         })();
 
