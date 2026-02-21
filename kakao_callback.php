@@ -195,8 +195,17 @@ $_SESSION['__debug_callback'] = [
     'me_keys' => array_keys($me),
 ];
 
-// ✅ 저장 강제 확정
-session_write_close();
+
+echo "<pre>";
+echo "SESSION ID: " . session_id() . "\n\n";
+
+echo "SESSION DATA:\n";
+print_r($_SESSION);
+
+echo "\n\nME RAW:\n";
+print_r($me);
+
+exit;
 
 // return으로 복귀 (sid도 같이 붙여서 index에서 세션 복구 가능하게)
 redirect_with_query($return, ['kakao_ok' => '1', 'sid' => session_id()]);
