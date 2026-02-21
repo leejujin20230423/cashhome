@@ -5,20 +5,23 @@ declare(strict_types=1);
  * kakao_callback.php
  * - 카카오에서 돌아오면 토큰 발급 -> /v2/user/me 조회
  * - nickname(성함) 세션 저장
- * - 실패 원인을 $_SESSION['kakao_error']로 저장해서 index.php에서 alert로 보여줌
+ * - ✅ 실패 원인을 URL query로 붙여 index.php에서 무조건 보이게 처리(세션 깨져도 OK)
  */
+
+$https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+      || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443);
 
 session_set_cookie_params([
     'lifetime' => 0,
     'path' => '/',
-    'secure' => true,
+    'secure' => $https,   // ✅ HTTPS 자동 감지
     'httponly' => true,
     'samesite' => 'Lax',
 ]);
 session_start();
 
 const KAKAO_REST_API_KEY = 'd6cf1b953dfb5b853674b0c265090b1b';
-const KAKAO_CLIENT_SECRET = 'YqcjxkwRyqjK813eckdVyn4eAP87q4U7'; // Secret ON일 때만 의미 있음
+const KAKAO_CLIENT_SECRET = 'YqcjxkwRyqjK813eckdVyn4eAP87q4U7';
 const KAKAO_REDIRECT_URI = 'https://cashhome.bizstore.co.kr/kakao_callback.php';
 
 function http_post_form(string $url, array $data): array {
@@ -76,30 +79,45 @@ function normalize_phone_kr(string $phone): string {
     return $digits;
 }
 
-// ✅ return 가져오기
+/** return(url+hash) 보존하면서 query 붙여 redirect */
+function redirect_with_query(string $return, array $q): void {
+    $u = parse_url($return);
+
+    $path  = $u['path'] ?? 'index.php';
+    $query = $u['query'] ?? '';
+    $frag  = $u['fragment'] ?? '';
+
+    parse_str($query, $orig);
+    $merged = array_merge($orig, $q);
+    $newQuery = http_build_query($merged);
+
+    $url = $path;
+    if ($newQuery !== '') $url .= '?' . $newQuery;
+    if ($frag !== '') $url .= '#' . $frag;
+
+    header('Location: ' . $url);
+    exit;
+}
+
 $return = (string)($_SESSION['kakao_return'] ?? 'index.php#apply');
 unset($_SESSION['kakao_return']);
 
-// ✅ 카카오에서 에러로 돌아온 경우
+// ✅ 카카오가 에러로 콜백을 호출했을 때
 if (!empty($_GET['error'])) {
-    $_SESSION['kakao_error'] = '카카오 에러: ' . (string)($_GET['error_description'] ?? $_GET['error']);
-    header('Location: ' . $return);
-    exit;
+    $msg = (string)($_GET['error_description'] ?? $_GET['error']);
+    redirect_with_query($return, ['kakao_error' => $msg]);
 }
 
 $code  = (string)($_GET['code'] ?? '');
 $state = (string)($_GET['state'] ?? '');
 
 if ($code === '' || $state === '') {
-    $_SESSION['kakao_error'] = '카카오 콜백 파라미터(code/state)가 없습니다.';
-    header('Location: ' . $return);
-    exit;
+    // ✅ 콜백 직접 접속하면 여기 걸리는 게 정상
+    redirect_with_query($return, ['kakao_error' => '콜백에 code/state 없음(직접 접속 또는 카카오 설정 오류)']);
 }
 
 if (empty($_SESSION['kakao_oauth_state']) || !hash_equals((string)$_SESSION['kakao_oauth_state'], $state)) {
-    $_SESSION['kakao_error'] = '카카오 로그인 state 검증 실패(세션/SameSite 설정 문제 가능)';
-    header('Location: ' . $return);
-    exit;
+    redirect_with_query($return, ['kakao_error' => 'state 검증 실패(세션 쿠키 유지 안 됨)']);
 }
 unset($_SESSION['kakao_oauth_state']);
 
@@ -111,8 +129,7 @@ $tokenReq = [
     'code'         => $code,
 ];
 
-// ✅ secret은 넣어도 되지만, 콘솔에서 Secret OFF면 실패할 수 있음.
-// 여기서는 값이 있으면 보내도록 했는데, 만약 계속 토큰 실패면 이 줄을 주석 처리해봐.
+// ✅ Secret이 콘솔에서 ON일 때만 유효. 토큰 실패하면 이 줄 주석 처리 테스트!
 if (KAKAO_CLIENT_SECRET !== '') {
     $tokenReq['client_secret'] = KAKAO_CLIENT_SECRET;
 }
@@ -120,32 +137,25 @@ if (KAKAO_CLIENT_SECRET !== '') {
 [$http, $body, $err] = http_post_form('https://kauth.kakao.com/oauth/token', $tokenReq);
 
 if ($http !== 200) {
-    $_SESSION['kakao_error'] = '카카오 토큰 발급 실패 (HTTP ' . $http . ')';
     error_log('[KAKAO TOKEN FAIL] http=' . $http . ' err=' . $err . ' body=' . $body);
-    header('Location: ' . $return);
-    exit;
+    redirect_with_query($return, ['kakao_error' => '토큰 발급 실패(HTTP '.$http.')']);
 }
 
 $token = json_array($body);
 $accessToken = (string)($token['access_token'] ?? '');
 if ($accessToken === '') {
-    $_SESSION['kakao_error'] = '카카오 토큰 응답에 access_token이 없습니다.';
     error_log('[KAKAO TOKEN NO ACCESS_TOKEN] body=' . $body);
-    header('Location: ' . $return);
-    exit;
+    redirect_with_query($return, ['kakao_error' => 'access_token 없음']);
 }
 
 // 2) 사용자 정보 조회
 [$http2, $body2, $err2] = http_get('https://kapi.kakao.com/v2/user/me', [
     'Authorization: Bearer ' . $accessToken,
-    'Content-Type: application/x-www-form-urlencoded;charset=utf-8',
 ]);
 
 if ($http2 !== 200) {
-    $_SESSION['kakao_error'] = '카카오 사용자 정보 조회 실패 (HTTP ' . $http2 . ')';
     error_log('[KAKAO ME FAIL] http=' . $http2 . ' err=' . $err2 . ' body=' . $body2);
-    header('Location: ' . $return);
-    exit;
+    redirect_with_query($return, ['kakao_error' => '사용자정보 조회 실패(HTTP '.$http2.')']);
 }
 
 $me = json_array($body2);
@@ -153,15 +163,10 @@ $nickname = (string)($me['kakao_account']['profile']['nickname'] ?? '');
 $phoneRaw = (string)($me['kakao_account']['phone_number'] ?? '');
 $phone = normalize_phone_kr($phoneRaw);
 
-// ✅ 세션 저장 (index.php 자동 채움)
+// ✅ 세션 저장 (세션 살아있으면 index에서 자동채움)
 $_SESSION['kakao_profile'] = [
     'nickname' => $nickname,
     'phone_number' => $phone,
 ];
 
-$_SESSION['kakao_ok'] = $nickname !== ''
-    ? '카카오 로그인 완료! 성함이 자동 입력되었습니다.'
-    : '카카오 로그인 완료! (성함 정보는 제공되지 않았습니다.)';
-
-header('Location: ' . $return);
-exit;
+redirect_with_query($return, ['kakao_ok' => '1']);
