@@ -1,11 +1,11 @@
 <?php
 declare(strict_types=1);
+
 session_start();
 
-const KAKAO_REST_API_KEY = '여기에_REST_API_KEY';
-const KAKAO_CLIENT_SECRET = '여기에_CLIENT_SECRET';
-const KAKAO_REDIRECT_URI = 'https://your-domain.com/kakao_callback.php';
-
+const KAKAO_REST_API_KEY = 'd6cf1b953dfb5b853674b0c265090b1b';
+const KAKAO_CLIENT_SECRET = 'YqcjxkwRyqjK813eckdVyn4eAP87q4U7'; // 콘솔에서 Client Secret 사용 ON일 때만
+const KAKAO_REDIRECT_URI = 'https://cashhome.bizstore.co.kr/kakao_callback.php';
 function http_post(string $url, array $data, array $headers = []): array {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
