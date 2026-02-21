@@ -163,6 +163,38 @@ $old = [
     'memo' => is_array($draft) ? (string)($draft['memo'] ?? '') : '',
 ];
 
+
+// ✅ 카카오 로그인 결과 메시지 (URL query)
+$kakaoErr = (string)($_GET['kakao_error'] ?? '');
+$kakaoOkMsg = !empty($_GET['kakao_ok']) ? '카카오 로그인 완료! 성함이 자동 입력되었습니다.' : '';
+
+// ✅ 카카오 프로필이 있으면 폼 자동 채움 + draft에도 반영
+if (!empty($_SESSION['kakao_profile']) && is_array($_SESSION['kakao_profile'])) {
+    $kp = $_SESSION['kakao_profile'];
+    $kName  = trim((string)($kp['nickname'] ?? ''));
+    $kPhone = trim((string)($kp['phone_number'] ?? ''));
+
+    // 1) 화면에 보여줄 값($old) 채우기
+    if ($kName !== '' && ($old['name'] === '' || mb_strlen($old['name']) < 2)) {
+        $old['name'] = $kName;
+    }
+    if ($kPhone !== '' && $old['phone'] === '') {
+        $old['phone'] = $kPhone;
+    }
+
+    // 2) ✅ 사전검증(preconsent)용 draft에도 반영(동의 누르기 전에 이름/폰 유지)
+    if (empty($_SESSION['cashhome_inquiry_draft']) || !is_array($_SESSION['cashhome_inquiry_draft'])) {
+        $_SESSION['cashhome_inquiry_draft'] = $old;
+    } else {
+        if ($kName !== '' && (empty($_SESSION['cashhome_inquiry_draft']['name']) || mb_strlen((string)$_SESSION['cashhome_inquiry_draft']['name']) < 2)) {
+            $_SESSION['cashhome_inquiry_draft']['name'] = $kName;
+        }
+        if ($kPhone !== '' && empty($_SESSION['cashhome_inquiry_draft']['phone'])) {
+            $_SESSION['cashhome_inquiry_draft']['phone'] = $kPhone;
+        }
+    }
+}
+
 /**
  * ✅ 동의페이지 이동 전 사전검증 요청 (AJAX)
  * POST action=preconsent
@@ -1370,12 +1402,19 @@ $disclosure = [
 
     <button class="topbtn" id="topbtn" type="button" aria-label="맨 위로">↑</button>
     <script>
-        // ✅ 서버 에러/성공 메시지 -> 팝업(alert)
+        // ✅ 서버 에러/성공/카카오 메시지 -> 팝업(alert)
         (function() {
             const err = <?= json_encode($errorMsg, JSON_UNESCAPED_UNICODE) ?>;
             const ok = <?= json_encode($successMsg, JSON_UNESCAPED_UNICODE) ?>;
+
+            const kerr = <?= json_encode($kakaoErr ?? '', JSON_UNESCAPED_UNICODE) ?>;
+            const kok = <?= json_encode($kakaoOkMsg ?? '', JSON_UNESCAPED_UNICODE) ?>;
+
             if (err) alert(err);
             if (ok) alert(ok);
+
+            if (kerr) alert(kerr);
+            if (kok) alert(kok);
         })();
 
         // Smooth scroll (in-page)
