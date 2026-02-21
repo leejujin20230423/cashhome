@@ -13,8 +13,10 @@ $_SESSION['kakao_oauth_state'] = $state;
 
 // 필요 동의 항목
 $scope = [
-  'profile',
-  // 'phone_number', // 전화번호는 설정/심사/동의항목 활성화가 되어 있어야 뜹니다.
+  'profile_nickname',
+  'profile_image',
+  // 'account_email',
+  // 'phone_number',
 ];
 
 $q = http_build_query([
