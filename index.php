@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * index.php (전체)
+ * index.php (전체) - 헤더 로고 이미지 적용 버전
  */
 
 $isHttps = (
@@ -372,6 +372,14 @@ $disclosure = [
     '중개수수료' => '대출중개수수료 없음 (당사 기준)',
     '유의사항' => '과도한 대출은 개인신용평점 하락의 원인이 될 수 있으며, 연체 시 신용정보에 등록될 수 있습니다.',
 ];
+
+/**
+ * ✅ 로고 이미지 경로
+ * - 프로젝트에 파일을 업로드해서 아래 경로로 맞춰주세요.
+ *   예: /images/ecash-icon.png
+ * - 지금은 "아이콘 준비됨" 기준으로 경로만 연결해둡니다.
+ */
+$logoImg = 'images/ecash-icon.png';
 ?>
 <!doctype html>
 <html lang="ko">
@@ -428,6 +436,7 @@ $disclosure = [
             padding: 22px 18px 80px;
         }
 
+        /* ✅ 헤더(상단 네비) */
         .nav {
             position: sticky;
             top: 0;
@@ -454,17 +463,26 @@ $disclosure = [
             text-decoration: none
         }
 
+        /* ✅ 로고 박스 (기존 E 대신 이미지) */
         .logo {
             width: 40px;
             height: 40px;
             border-radius: 14px;
-            background: linear-gradient(135deg, rgba(110, 231, 255, .9), rgba(167, 139, 250, .85));
             box-shadow: var(--shadow);
+            overflow: hidden;
+            /* 이미지 모서리 둥글게 */
+            background: rgba(255, 255, 255, .06);
+            border: 1px solid rgba(234, 240, 255, .10);
             display: grid;
             place-items: center;
-            font-weight: 800;
-            color: #081022;
-            letter-spacing: .5px;
+        }
+
+        .logo img {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: cover;
+            /* 아이콘이 꽉 차게 */
         }
 
         .brand strong {
@@ -980,22 +998,18 @@ $disclosure = [
             box-shadow: 0 6px 16px rgba(0, 0, 0, .25);
         }
 
-        /* ✅ 핵심: 버튼 3개를 가로로 한 줄 */
         .action-row {
             display: flex;
             gap: 12px;
             align-items: center;
             flex-wrap: wrap;
-            /* 모바일에서는 줄바꿈 */
             margin-top: 10px;
         }
 
         .action-row>* {
             margin: 0 !important;
-            /* 내부 div 마진 때문에 위로 뜨는 현상 방지 */
         }
 
-        /* ✅ 카카오 잠금 */
         .kakao-disabled {
             opacity: .55;
             filter: grayscale(20%);
@@ -1028,26 +1042,29 @@ $disclosure = [
 </head>
 
 <body>
-    <div class="nav">
+    <!-- ✅ 헤더로 분리 -->
+    <header class="nav" role="banner">
         <div class="navin">
             <a class="brand" href="#top" aria-label="<?= h($brandEn) ?> 홈으로">
-                <div class="logo">E</div>
+                <div class="logo">
+                    <img src="<?= h($logoImg) ?>" alt="<?= h($brandEn) ?> 로고" />
+                </div>
                 <div>
                     <strong><?= h($brandEn) ?></strong>
                     <span><?= h($brandKr) ?></span>
                 </div>
             </a>
 
-            <div class="navlinks" role="navigation" aria-label="상단 메뉴">
+            <nav class="navlinks" aria-label="상단 메뉴">
                 <a href="#services">서비스</a>
                 <a href="#process">절차</a>
                 <a href="#disclosure">고지</a>
                 <a href="#apply">상담신청</a>
                 <a class="cta" href="#apply">빠른 상담</a>
                 <a class="btnGhost" href="admin_login.php" rel="nofollow">관리자 로그인</a>
-            </div>
+            </nav>
         </div>
-    </div>
+    </header>
 
     <main class="wrap" id="top">
         <section class="hero">
@@ -1286,7 +1303,6 @@ COOKIE(PHPSESSID):
                                 <div class="arrow" aria-hidden="true">›</div>
                             </div>
 
-                            <!-- ✅ 버튼 3개: 가로 한 줄 (중첩 div 제거) -->
                             <div class="action-row">
                                 <?php if (!$consentOk): ?>
                                     <a class="cta" href="#" id="goConsentBtn">동의하러 가기</a>
@@ -1316,7 +1332,10 @@ COOKIE(PHPSESSID):
             <div class="cols">
                 <div>
                     <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-                        <div class="logo" style="width:34px;height:34px;border-radius:14px;">E</div>
+                        <!-- ✅ 푸터 로고도 이미지로 통일 -->
+                        <div class="logo" style="width:34px;height:34px;border-radius:14px;">
+                            <img src="<?= h($logoImg) ?>" alt="<?= h($brandEn) ?> 로고" />
+                        </div>
                         <div>
                             <div style="font-weight:900; color: rgba(234,240,255,.92);"><?= h($brandEn) ?> · <?= h($brandKr) ?></div>
                             <div class="tiny">대부업 관련 법령 및 표시 의무에 따라 정보를 제공합니다.</div>
