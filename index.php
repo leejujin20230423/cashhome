@@ -381,6 +381,10 @@ $disclosure = [
  */
 $logoImg = '/cashhome_icon/ecash_icon_512.png';
 ?>
+
+
+
+
 <!doctype html>
 <html lang="ko">
 
@@ -389,7 +393,6 @@ $logoImg = '/cashhome_icon/ecash_icon_512.png';
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0B1220" />
     <title><?= h($brandEn) ?> | <?= h($brandKr) ?> - 빠르고 간편한 상담</title>
-
     <style>
         :root {
             --bg: #0B1220;
@@ -403,6 +406,9 @@ $logoImg = '/cashhome_icon/ecash_icon_512.png';
             --radius: 18px;
             --radius2: 24px;
             --max: 1120px;
+
+            /* ✅ 헤더 높이 (fixed 보정용) */
+            --navH: 74px;
         }
 
         * {
@@ -424,6 +430,9 @@ $logoImg = '/cashhome_icon/ecash_icon_512.png';
                 var(--bg);
             color: var(--text);
             line-height: 1.5;
+
+            /* ✅ fixed 헤더가 본문을 덮지 않게 */
+            padding-top: var(--navH);
         }
 
         a {
@@ -438,9 +447,14 @@ $logoImg = '/cashhome_icon/ecash_icon_512.png';
 
         /* ✅ 헤더(상단 네비) */
         .nav {
-            position: sticky;
+            /* ✅ sticky -> fixed 로 변경 (끝까지 따라오게) */
+            position: fixed;
             top: 0;
+            left: 0;
+            width: 100%;
+            height: var(--navH);
             z-index: 30;
+
             backdrop-filter: blur(12px);
             background: rgba(11, 18, 32, .55);
             border-bottom: 1px solid var(--line);
@@ -449,6 +463,7 @@ $logoImg = '/cashhome_icon/ecash_icon_512.png';
         .navin {
             max-width: var(--max);
             margin: 0 auto;
+            height: var(--navH);
             padding: 12px 18px;
             display: flex;
             align-items: center;
@@ -464,22 +479,16 @@ $logoImg = '/cashhome_icon/ecash_icon_512.png';
         }
 
         /* ✅ 로고 박스 (기존 E 대신 이미지) */
-        /* 헤더 로고 박스 */
         .logo {
             width: 50px;
-            /* 원하는 크기 */
             height: 50px;
             border-radius: 14px;
             overflow: hidden;
-            /* 둥근 모서리 유지 */
             background: none;
-            /* ✅ 배경 제거 */
             border: 0;
-            /* ✅ 테두리 제거 */
             box-shadow: none;
-            /* 필요 없으면 제거 */
             padding: 0;
-            /* ✅ 이거 중요 */
+            flex: 0 0 auto;
         }
 
         .logo img {
@@ -487,9 +496,7 @@ $logoImg = '/cashhome_icon/ecash_icon_512.png';
             height: 100%;
             display: block;
             object-fit: cover;
-            /* ✅ 꽉 차게 */
             padding: 0;
-            /* ✅ 여백 제거 */
         }
 
         .brand strong {
