@@ -2,32 +2,27 @@
 declare(strict_types=1);
 session_start();
 
-// const KAKAO_REST_API_KEY   = 'd6cf1b953dfb5b853674b0c265090b1b';
-const KAKAO_REST_API_KEY   = 'd6cf1b953dfb5b853674b0c265090b1b';
-const KAKAO_CLIENT_SECRET = 'YqcjxkwRyqjK813eckdVyn4eAP87q4U7'; // 콘솔에서 Client Secret 사용 ON일 때만
-// const KAKAO_REDIRECT_URI  = 'https://cashhome.bizstore.co.kr/kakao_callback.php';
-;
+// ✅ 카카오 REST API 키 (앱 > 요약정보 또는 앱키에서 확인)
+const KAKAO_REST_API_KEY = 'd6cf1b953dfb5b853674b0c265090b1b';
 
+// ✅ 카카오 로그인 Redirect URI (콘솔에 등록한 것과 100% 동일해야 함)
 const KAKAO_REDIRECT_URI = 'https://cashhome.bizstore.co.kr/kakao_callback.php';
 
+// CSRF 방지용 state
 $state = bin2hex(random_bytes(16));
 $_SESSION['kakao_oauth_state'] = $state;
 
-// 필요 동의 항목
-$scope = [
-  'profile_nickname',
-  'profile_image',
-  // 'account_email',
-  // 'phone_number',
+// ✅ 1) scope 없이 먼저 성공 확인 (KOE205 방지용)
+$params = [
+    'client_id'     => KAKAO_REST_API_KEY,
+    'redirect_uri'  => KAKAO_REDIRECT_URI,
+    'response_type' => 'code',
+    'state'         => $state,
 ];
 
-$q = http_build_query([
-  'client_id'     => KAKAO_REST_API_KEY,
-  'redirect_uri'  => KAKAO_REDIRECT_URI,
-  'response_type' => 'code',
-  'state'         => $state,
-  'scope'         => implode(',', $scope),
-]);
+// authorize URL
+$authorizeUrl = 'https://kauth.kakao.com/oauth/authorize?' . http_build_query($params);
 
-header('Location: https://kauth.kakao.com/oauth/authorize?' . $q);
+// 이동
+header('Location: ' . $authorizeUrl);
 exit;
