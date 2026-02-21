@@ -69,6 +69,114 @@ function phone_digits(string $phone): string
     return preg_replace('/\D+/', '', $phone) ?? '';
 }
 
+/**
+ * ✅ doc_type 라벨
+ */
+function doc_type_label(string $t): string
+{
+    return match ($t) {
+        'id_card' => '신분증',
+        'resident_record' => '등본',
+        'bankbook' => '통장',
+        'income_proof' => '소득증빙',
+        'business_license' => '사업자등록증',
+        default => '기타',
+    };
+}
+
+/**
+ * ✅ 특정 문의(inquiry_id)의 서류 목록을 doc_type별로 그룹핑해서 가져오기
+ */
+function fetch_docs_grouped(PDO $pdo, int $inquiryId): array
+{
+    if ($inquiryId <= 0) return [];
+
+    $st = $pdo->prepare("
+        SELECT
+          cashhome_1200_id,
+          cashhome_1200_inquiry_id,
+          cashhome_1200_doc_type,
+          cashhome_1200_file_path,
+          cashhome_1200_original_name,
+          cashhome_1200_mime,
+          cashhome_1200_size_bytes,
+          cashhome_1200_width,
+          cashhome_1200_height,
+          cashhome_1200_created_at
+        FROM cashhome_1200_documents
+        WHERE cashhome_1200_inquiry_id = :iid
+        ORDER BY cashhome_1200_doc_type ASC, cashhome_1200_id DESC
+    ");
+    $st->execute([':iid' => $inquiryId]);
+    $rows = $st->fetchAll();
+
+    $grouped = [];
+    foreach ($rows as $r) {
+        $type = (string)($r['cashhome_1200_doc_type'] ?? 'etc');
+        if (!isset($grouped[$type])) $grouped[$type] = [];
+        $grouped[$type][] = $r;
+    }
+    return $grouped;
+}
+
+function safe_realpath_for_doc(?string $path): ?string
+{
+    if (!$path) return null;
+
+    // 절대경로
+    if (str_starts_with($path, '/') || preg_match('#^[A-Za-z]:[\\\\/]#', $path)) {
+        $rp = realpath($path);
+        return $rp ?: null;
+    }
+
+    // 상대경로는 현재 디렉토리 기준
+    $full = __DIR__ . '/' . ltrim($path, '/');
+    $rp = realpath($full);
+    return $rp ?: null;
+}
+
+/**
+ * ✅ doc 1개 삭제(DB + 디스크)
+ */
+function delete_doc(PDO $pdo, int $docId): bool
+{
+    if ($docId <= 0) return false;
+
+    $pdo->beginTransaction();
+    try {
+        $st = $pdo->prepare("
+            SELECT cashhome_1200_id, cashhome_1200_file_path
+            FROM cashhome_1200_documents
+            WHERE cashhome_1200_id = :id
+            LIMIT 1
+        ");
+        $st->execute([':id' => $docId]);
+        $row = $st->fetch();
+        if (!$row) {
+            $pdo->rollBack();
+            return false;
+        }
+
+        $filePath = safe_realpath_for_doc((string)($row['cashhome_1200_file_path'] ?? ''));
+
+        $del = $pdo->prepare("DELETE FROM cashhome_1200_documents WHERE cashhome_1200_id = :id LIMIT 1");
+        $del->execute([':id' => $docId]);
+
+        $pdo->commit();
+
+        // 디스크 파일 삭제(트랜잭션 밖에서)
+        if ($filePath && is_file($filePath)) {
+            @unlink($filePath);
+        }
+
+        return true;
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        error_log('[DOC DELETE ERROR] ' . $e->getMessage());
+        return false;
+    }
+}
+
 function build_filters_from_request(array $src): array
 {
     $today = date('Y-m-d');
@@ -340,6 +448,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
     }
 }
 
+// ===== 서류 삭제(POST) =====
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') === 'delete_doc') {
+    header('Content-Type: application/json; charset=utf-8');
+
+    $token = (string)($_POST['csrf_token'] ?? '');
+    if (!hash_equals($_SESSION['csrf_token_admin'], $token)) {
+        echo json_encode(['ok' => false, 'message' => '요청이 만료되었습니다. 새로고침 후 다시 시도해주세요.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $docId = (int)($_POST['doc_id'] ?? 0);
+    if ($docId <= 0) {
+        echo json_encode(['ok' => false, 'message' => '잘못된 요청입니다.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $ok = delete_doc($pdo, $docId);
+    if (!$ok) {
+        echo json_encode(['ok' => false, 'message' => '삭제에 실패했습니다.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $_SESSION['csrf_token_admin'] = bin2hex(random_bytes(32));
+
+    echo json_encode([
+        'ok' => true,
+        'message' => '서류가 삭제되었습니다.',
+        'csrf_token' => $_SESSION['csrf_token_admin'],
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 // ===== AJAX =====
 if (isset($_GET['ajax']) && $_GET['ajax'] === '1') {
     header('Content-Type: application/json; charset=utf-8');
@@ -359,6 +499,8 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === '1') {
         }
         if (!$selected && !empty($rows)) $selected = $rows[0];
 
+        $docs = $selected ? fetch_docs_grouped($pdo, (int)$selected['cashhome_1000_id']) : [];
+
         echo json_encode([
             'ok' => true,
             'filters' => [
@@ -373,6 +515,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === '1') {
             'rows' => compact_rows_for_json($rows),
             'stats' => $stats,
             'selected' => $selected,
+            'docs' => $docs,
             'csrf_token' => $_SESSION['csrf_token_admin'],
         ], JSON_UNESCAPED_UNICODE);
         exit;
@@ -384,16 +527,11 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === '1') {
 }
 
 // ===== 엑셀 다운로드(CSV) =====
-// ===== 엑셀 다운로드(CSV) =====
 if (isset($_GET['excel']) && $_GET['excel'] === '1') {
-    // ✅ CSV 출력에서는 에러/경고가 섞이면 파일이 깨집니다.
-    //    (Deprecated 같은 것들이 <br>로 출력되어 CSV가 웹페이지처럼 보임)
     ini_set('display_errors', '0');
     ini_set('html_errors', '0');
-    // Deprecated만 숨기고 싶으면 아래처럼 (원하면 E_WARNING도 빼지 마세요)
     error_reporting(E_ALL & ~E_DEPRECATED);
 
-    // 혹시 이전에 출력 버퍼가 잡혀있으면 정리 (헤더/CSV 깨짐 방지)
     while (ob_get_level() > 0) {
         ob_end_clean();
     }
@@ -405,7 +543,6 @@ if (isset($_GET['excel']) && $_GET['excel'] === '1') {
     header('Pragma: no-cache');
     header('Expires: 0');
 
-    // ✅ 엑셀 한글 깨짐 방지(BOM)
     echo "\xEF\xBB\xBF";
 
     $columns = [
@@ -462,8 +599,6 @@ if (isset($_GET['excel']) && $_GET['excel'] === '1') {
 
     $out = fopen('php://output', 'w');
 
-    // ✅ 여기서 Deprecated 해결 포인트: 5번째 인자 escape를 명시
-    // fputcsv($out, array_values($columns));  // (기존)
     fputcsv($out, array_values($columns), ',', '"', '\\');
 
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -471,7 +606,6 @@ if (isset($_GET['excel']) && $_GET['excel'] === '1') {
         foreach (array_keys($columns) as $k) {
             $line[] = $row[$k] ?? '';
         }
-        // fputcsv($out, $line); // (기존)
         fputcsv($out, $line, ',', '"', '\\');
     }
 
@@ -503,8 +637,10 @@ try {
     $stats = ['total' => 0, 'approved' => 0, 'pending' => 0, 'rejected' => 0, 'rate' => 0, 'labels' => [], 'series_all' => [], 'series_approved' => []];
 }
 
+$docsSelected = $selected ? fetch_docs_grouped($pdo, (int)$selected['cashhome_1000_id']) : [];
 $approvedBadgeCount = (int)($stats['approved'] ?? 0);
 ?>
+
 <!doctype html>
 <html lang="ko">
 
@@ -516,6 +652,7 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
+        /* (기존 CSS 그대로) */
         :root {
             --bg: #0B1220;
             --card: rgba(16, 26, 51, .80);
@@ -647,10 +784,9 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
             border-radius: 14px;
             border: 1px solid rgba(255, 120, 120, .35);
             background: rgba(255, 255, 255, .03);
-            font-size: 12px
+            font-size: 12px;
         }
 
-        /* 검색 */
         .filters {
             margin-top: 12px;
             padding: 14px;
@@ -691,7 +827,7 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
         select:focus,
         input[type="text"]:focus {
             border-color: rgba(110, 231, 255, .55);
-            box-shadow: 0 0 0 3px rgba(110, 231, 255, .12)
+            box-shadow: 0 0 0 3px rgba(110, 231, 255, .12);
         }
 
         .meta {
@@ -714,10 +850,6 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
             .filters {
                 grid-template-columns: 1fr 1fr 1fr 1fr;
             }
-
-            .meta {
-                grid-column: 1 / -1;
-            }
         }
 
         @media (max-width: 720px) {
@@ -726,7 +858,6 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
             }
         }
 
-        /* ✅ 통계(아래로) */
         .statsGrid {
             margin-top: 12px;
             display: grid;
@@ -734,7 +865,7 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
             gap: 12px;
         }
 
-        @media (max-width: 1100px) {
+        @media (max-width:1100px) {
             .statsGrid {
                 grid-template-columns: 1fr;
             }
@@ -779,10 +910,6 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
             font-weight: 900;
         }
 
-        .pill span {
-            font-weight: 900
-        }
-
         .pill.pending {
             border-color: rgba(251, 191, 36, .25);
             color: #FFE6A8
@@ -812,7 +939,6 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
             height: 260px !important
         }
 
-        /* ✅ 레이아웃 (겹침 방지: height 강제 제거) */
         .layout {
             margin-top: 12px;
             display: grid;
@@ -821,7 +947,7 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
             align-items: start;
         }
 
-        @media (max-width: 1100px) {
+        @media (max-width:1100px) {
             .layout {
                 grid-template-columns: 1fr;
             }
@@ -856,7 +982,6 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
             font-size: 12px
         }
 
-        /* ✅ 리스트: JS가 max-height 자동 계산, 여기서는 스크롤만 */
         .list {
             overflow: auto;
         }
@@ -975,7 +1100,6 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
             color: #BFF7D3
         }
 
-        /* ✅ 상세: 스크롤 제거 */
         .detailBody {
             padding: 14px;
             overflow: visible;
@@ -1030,7 +1154,7 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
             align-items: end;
         }
 
-        @media (max-width: 720px) {
+        @media (max-width:720px) {
             .formRow {
                 grid-template-columns: 1fr;
             }
@@ -1061,6 +1185,106 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
 
         .callBtn:hover {
             background: rgba(255, 255, 255, .05)
+        }
+
+        /* ✅ 서류 썸네일 UI */
+        .docsWrap {
+            display: grid;
+            gap: 12px;
+        }
+
+        .docGroup {
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            background: rgba(8, 12, 24, .35);
+            padding: 12px;
+        }
+
+        .docGroupHead {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .docGroupHead b {
+            font-size: 13px;
+        }
+
+        .docGrid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        @media (max-width: 900px) {
+            .docGrid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        .docItem {
+            border: 1px solid var(--line2);
+            border-radius: 14px;
+            background: rgba(255, 255, 255, .03);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .thumb {
+            width: 100%;
+            aspect-ratio: 4 / 3;
+            background: rgba(0, 0, 0, .25);
+            display: block;
+            object-fit: cover;
+        }
+
+        .docMeta {
+            padding: 10px;
+            display: grid;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .docMeta .fn {
+            color: rgba(234, 240, 255, .92);
+            font-weight: 900;
+            font-size: 12px;
+            word-break: break-word;
+        }
+
+        .docBtns {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .miniBtn {
+            padding: 8px 10px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, .03);
+            color: var(--text);
+            font-size: 12px;
+            font-weight: 900;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .miniBtn:hover {
+            background: rgba(255, 255, 255, .05);
+        }
+
+        .miniBtn.danger {
+            border-color: rgba(239, 68, 68, .35);
+            color: #FFD3D3;
+            background: rgba(239, 68, 68, .10);
         }
     </style>
 </head>
@@ -1150,6 +1374,7 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
 
         <!-- ✅ 리스트 + 상세 -->
         <div class="layout" id="layoutBox">
+
             <!-- 좌측 리스트 -->
             <div class="panel">
                 <div class="panelHead">
@@ -1170,7 +1395,6 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
                         $mOk = !empty($r['marketing_at']);
                         $st = (string)$r['cashhome_1000_status'];
                         $oc = (string)($r['cashhome_1000_outcome'] ?? 'pending');
-
                         $ocClass = $oc === 'approved' ? 'approved' : ($oc === 'rejected' ? 'rejected' : 'pending');
                         ?>
                         <div class="item <?= $on ? 'on' : '' ?>" data-id="<?= h((string)$id) ?>">
@@ -1184,9 +1408,7 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
                                 <span><?= h((string)$r['cashhome_1000_customer_phone']) ?></span>
                             </div>
                             <div class="chips">
-                                <span class="badge <?= h($ocClass) ?>">
-                                    <span class="dot"></span> <?= h(outcome_label($oc)) ?>
-                                </span>
+                                <span class="badge <?= h($ocClass) ?>"><span class="dot"></span> <?= h(outcome_label($oc)) ?></span>
                                 <span class="badge status">상태: <?= h(status_label($st)) ?></span>
                                 <span class="badge consent <?= $pOk ? 'ok' : '' ?>">개인정보: <?= $pOk ? '동의함' : '미동의' ?></span>
                                 <span class="badge consent <?= $mOk ? 'ok' : '' ?>">마케팅: <?= $mOk ? '동의함' : '미동의' ?></span>
@@ -1220,8 +1442,10 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
                         <div class="kv">
                             <div class="k">접수일시</div>
                             <div class="v" id="d_created"><?= h((string)$selected['cashhome_1000_created_at']) ?></div>
+
                             <div class="k">이름</div>
                             <div class="v" id="d_name"><?= h((string)$selected['cashhome_1000_customer_name']) ?></div>
+
                             <div class="k">연락처</div>
                             <div class="v" id="d_phone">
                                 <?= h($phone) ?>
@@ -1234,11 +1458,13 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
 
                             <div class="k">희망금액</div>
                             <div class="v" id="d_amount"><?= h((string)($selected['cashhome_1000_loan_amount'] ?? '')) ?></div>
+
                             <div class="k">자금용도</div>
                             <div class="v" id="d_purpose"><?= h((string)($selected['cashhome_1000_loan_purpose'] ?? '')) ?></div>
 
                             <div class="k">IP</div>
                             <div class="v" id="d_ip"><?= h((string)($selected['cashhome_1000_user_ip'] ?? '')) ?></div>
+
                             <div class="k">User-Agent</div>
                             <div class="v" id="d_ua" style="word-break:break-word;"><?= h((string)($selected['cashhome_1000_user_agent'] ?? '')) ?></div>
 
@@ -1255,6 +1481,7 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
 
                             <div class="k">처리일시</div>
                             <div class="v" id="d_processed"><?= h((string)($selected['cashhome_1000_processed_at'] ?? '')) ?></div>
+
                             <div class="k">수정일시</div>
                             <div class="v" id="d_updated"><?= h((string)($selected['cashhome_1000_updated_at'] ?? '')) ?></div>
                         </div>
@@ -1263,6 +1490,47 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
 
                         <h3 class="detailTitle" style="font-size:15px;margin:0 0 8px;">요청사항</h3>
                         <div class="memoBox" id="d_memo"><?= h((string)($selected['cashhome_1000_request_memo'] ?? '')) ?></div>
+
+                        <div class="subhr"></div>
+
+                        <!-- ✅ 서류(썸네일/그룹/삭제) -->
+                        <h3 class="detailTitle" style="font-size:15px;margin:0 0 8px;">서류</h3>
+                        <div class="docsWrap" id="docsWrap">
+                            <?php if (empty($docsSelected)): ?>
+                                <div style="color:var(--muted);font-size:12px;">등록된 서류가 없습니다.</div>
+                            <?php else: ?>
+                                <?php foreach ($docsSelected as $dtype => $items): ?>
+                                    <div class="docGroup">
+                                        <div class="docGroupHead">
+                                            <b><?= h(doc_type_label((string)$dtype)) ?></b>
+                                            <span class="hint">총 <?= h((string)count($items)) ?>개</span>
+                                        </div>
+
+                                        <div class="docGrid">
+                                            <?php foreach ($items as $d): ?>
+                                                <?php
+                                                $docId = (int)$d['cashhome_1200_id'];
+                                                $fn = (string)($d['cashhome_1200_original_name'] ?? '');
+                                                if ($fn === '') $fn = 'image_' . $docId;
+                                                ?>
+                                                <div class="docItem" data-doc-id="<?= h((string)$docId) ?>">
+                                                    <!-- ✅ 이미지 보기 엔드포인트: document_view.php 를 만들어서 id로 파일을 뿌려주면 안전합니다 -->
+                                                    <img class="thumb" src="document_view.php?id=<?= h((string)$docId) ?>" alt="<?= h($fn) ?>" loading="lazy" />
+                                                    <div class="docMeta">
+                                                        <div class="fn"><?= h($fn) ?></div>
+                                                        <div><?= h((string)($d['cashhome_1200_created_at'] ?? '')) ?></div>
+                                                        <div class="docBtns">
+                                                            <a class="miniBtn" href="document_view.php?id=<?= h((string)$docId) ?>" target="_blank" rel="noopener">🔍 크게보기</a>
+                                                            <button class="miniBtn danger js-del-doc" type="button" data-doc-id="<?= h((string)$docId) ?>">🗑 삭제</button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </div>
 
                         <div class="subhr"></div>
 
@@ -1298,6 +1566,7 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
                         </div>
 
                         <input type="hidden" id="csrf_token" value="<?= h($_SESSION['csrf_token_admin']) ?>">
+
                     <?php endif; ?>
                 </div>
             </div>
@@ -1365,31 +1634,19 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
 
             let selectedId = <?= (int)$selectedId ?>;
 
-            // Charts
             let chartAll = null;
             let chartApproved = null;
 
-            // ✅ 화면 높이에 따라 리스트 높이 자동 계산(겹침 방지 완전 자동)
+            // ✅ 화면 높이에 따라 리스트 높이 자동 계산
             function autoListHeight() {
-                const wrap = document.querySelector('.wrap');
                 const list = document.querySelector('#listBox');
-                if (!wrap || !list) return;
-
+                if (!list) return;
                 const rect = list.getBoundingClientRect();
-
-                // 뷰포트 아래쪽과의 여백
                 const bottomGap = 18;
-
-                // listBox(스크롤 영역) 상단부터 viewport 끝까지
                 const available = window.innerHeight - rect.top - bottomGap;
-
-                // 너무 작아지는 경우 안전값
                 const minH = 260;
-                const h = Math.max(minH, Math.floor(available));
-
-                list.style.maxHeight = h + 'px';
+                list.style.maxHeight = Math.max(minH, Math.floor(available)) + 'px';
             }
-
             window.addEventListener('load', autoListHeight);
             window.addEventListener('resize', autoListHeight);
 
@@ -1411,6 +1668,15 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
                 if (oc === 'approved') return '승인';
                 if (oc === 'rejected') return '부결';
                 return oc;
+            }
+
+            function docTypeLabel(t) {
+                if (t === 'id_card') return '신분증';
+                if (t === 'resident_record') return '등본';
+                if (t === 'bankbook') return '통장';
+                if (t === 'income_proof') return '소득증빙';
+                if (t === 'business_license') return '사업자등록증';
+                return '기타';
             }
 
             function buildQuery(extra = {}) {
@@ -1435,7 +1701,7 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
             }
 
             function escapeHtml(s) {
-                return String(s)
+                return String(s ?? '')
                     .replaceAll('&', '&amp;')
                     .replaceAll('<', '&lt;')
                     .replaceAll('>', '&gt;')
@@ -1468,22 +1734,22 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
                     item.dataset.id = String(r.id);
 
                     item.innerHTML = `
-                        <div class="row1">
-                          <div class="name">${escapeHtml(r.name||'')}</div>
-                          <div class="idchip">#${r.id}</div>
-                        </div>
-                        <div class="row2">
-                          <span>${escapeHtml(r.created_at||'')}</span>
-                          <span>·</span>
-                          <span>${escapeHtml(r.phone||'')}</span>
-                        </div>
-                        <div class="chips">
-                          <span class="badge ${outcomeClass(oc)}"><span class="dot"></span> ${outcomeLabel(oc)}</span>
-                          <span class="badge status">상태: ${statusLabel(st)}</span>
-                          <span class="badge consent ${pOk?'ok':''}">개인정보: ${pOk?'동의함':'미동의'}</span>
-                          <span class="badge consent ${mOk?'ok':''}">마케팅: ${mOk?'동의함':'미동의'}</span>
-                        </div>
-                    `;
+            <div class="row1">
+              <div class="name">${escapeHtml(r.name||'')}</div>
+              <div class="idchip">#${r.id}</div>
+            </div>
+            <div class="row2">
+              <span>${escapeHtml(r.created_at||'')}</span>
+              <span>·</span>
+              <span>${escapeHtml(r.phone||'')}</span>
+            </div>
+            <div class="chips">
+              <span class="badge ${outcomeClass(oc)}"><span class="dot"></span> ${outcomeLabel(oc)}</span>
+              <span class="badge status">상태: ${statusLabel(st)}</span>
+              <span class="badge consent ${pOk?'ok':''}">개인정보: ${pOk?'동의함':'미동의'}</span>
+              <span class="badge consent ${mOk?'ok':''}">마케팅: ${mOk?'동의함':'미동의'}</span>
+            </div>
+          `;
 
                     item.addEventListener('click', () => {
                         selectedId = r.id;
@@ -1499,7 +1765,6 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
                     listBox.appendChild(item);
                 });
 
-                // ✅ 리스트가 다시 렌더되면 높이 재계산
                 autoListHeight();
             }
 
@@ -1557,7 +1822,90 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
                 });
             }
 
-            function renderDetail(sel) {
+            function buildDocsHtml(docs) {
+                if (!docs || Object.keys(docs).length === 0) {
+                    return `<div style="color:var(--muted);font-size:12px;">등록된 서류가 없습니다.</div>`;
+                }
+
+                let html = '';
+                for (const [dtype, items] of Object.entries(docs)) {
+                    const title = docTypeLabel(dtype);
+                    html += `
+            <div class="docGroup">
+              <div class="docGroupHead">
+                <b>${escapeHtml(title)}</b>
+                <span class="hint">총 ${items.length}개</span>
+              </div>
+              <div class="docGrid">
+          `;
+
+                    for (const d of items) {
+                        const docId = Number(d.cashhome_1200_id || 0);
+                        const fn = (d.cashhome_1200_original_name || '') ? d.cashhome_1200_original_name : ('image_' + docId);
+                        const created = d.cashhome_1200_created_at || '';
+                        html += `
+              <div class="docItem" data-doc-id="${docId}">
+                <img class="thumb" src="document_view.php?id=${docId}" alt="${escapeHtml(fn)}" loading="lazy" />
+                <div class="docMeta">
+                  <div class="fn">${escapeHtml(fn)}</div>
+                  <div>${escapeHtml(created)}</div>
+                  <div class="docBtns">
+                    <a class="miniBtn" href="document_view.php?id=${docId}" target="_blank" rel="noopener">🔍 크게보기</a>
+                    <button class="miniBtn danger js-del-doc" type="button" data-doc-id="${docId}">🗑 삭제</button>
+                  </div>
+                </div>
+              </div>
+            `;
+                    }
+
+                    html += `</div></div>`;
+                }
+                return html;
+            }
+
+            async function deleteDoc(docId) {
+                if (!docId) return;
+                if (!confirm('이 서류를 삭제할까요? (디스크 파일도 삭제됩니다)')) return;
+
+                const csrf = document.getElementById('csrf_token')?.value || '';
+                const fd = new FormData();
+                fd.append('action', 'delete_doc');
+                fd.append('csrf_token', csrf);
+                fd.append('doc_id', String(docId));
+
+                try {
+                    const res = await fetch('admin_inquiries.php', {
+                        method: 'POST',
+                        body: fd,
+                        credentials: 'same-origin'
+                    });
+                    const data = await res.json();
+                    if (!data.ok) {
+                        alert(data.message || '삭제 실패');
+                        return;
+                    }
+                    if (data.csrf_token) {
+                        const t = document.getElementById('csrf_token');
+                        if (t) t.value = data.csrf_token;
+                    }
+                    alert(data.message || '삭제되었습니다.');
+                    refresh(true);
+                } catch (e) {
+                    alert('네트워크 오류가 발생했습니다.');
+                }
+            }
+
+            function bindDocDeleteButtons(scopeEl) {
+                const root = scopeEl || document;
+                root.querySelectorAll('.js-del-doc').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const docId = Number(btn.dataset.docId || 0);
+                        deleteDoc(docId);
+                    });
+                });
+            }
+
+            function renderDetail(sel, docs) {
                 const box = document.getElementById('detailBox');
                 if (!sel) {
                     box.innerHTML = `<div style="color:var(--muted);font-size:12px;">선택된 항목이 없습니다.</div>`;
@@ -1576,74 +1924,80 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
                 const oc = sel.cashhome_1000_outcome || 'pending';
                 const note = sel.cashhome_1000_admin_note || '';
 
+                const docsHtml = buildDocsHtml(docs || {});
+
                 box.innerHTML = `
-                    <h3 class="detailTitle">접수 정보</h3>
-                    <div class="kv">
-                      <div class="k">접수일시</div><div class="v">${escapeHtml(sel.cashhome_1000_created_at||'')}</div>
-                      <div class="k">이름</div><div class="v">${escapeHtml(sel.cashhome_1000_customer_name||'')}</div>
-                      <div class="k">연락처</div>
-                      <div class="v">
-                        ${escapeHtml(phone)}
-                        ${tel ? `<div style="margin-top:8px;"><a class="callBtn" href="tel:${escapeHtml(tel)}">📞 전화걸기</a></div>` : ``}
-                      </div>
+          <h3 class="detailTitle">접수 정보</h3>
+          <div class="kv">
+            <div class="k">접수일시</div><div class="v">${escapeHtml(sel.cashhome_1000_created_at||'')}</div>
+            <div class="k">이름</div><div class="v">${escapeHtml(sel.cashhome_1000_customer_name||'')}</div>
+            <div class="k">연락처</div>
+            <div class="v">
+              ${escapeHtml(phone)}
+              ${tel ? `<div style="margin-top:8px;"><a class="callBtn" href="tel:${escapeHtml(tel)}">📞 전화걸기</a></div>` : ``}
+            </div>
 
-                      <div class="k">희망금액</div><div class="v">${escapeHtml(sel.cashhome_1000_loan_amount||'')}</div>
-                      <div class="k">자금용도</div><div class="v">${escapeHtml(sel.cashhome_1000_loan_purpose||'')}</div>
+            <div class="k">희망금액</div><div class="v">${escapeHtml(sel.cashhome_1000_loan_amount||'')}</div>
+            <div class="k">자금용도</div><div class="v">${escapeHtml(sel.cashhome_1000_loan_purpose||'')}</div>
 
-                      <div class="k">IP</div><div class="v">${escapeHtml(sel.cashhome_1000_user_ip||'')}</div>
-                      <div class="k">User-Agent</div><div class="v" style="word-break:break-word;">${escapeHtml(sel.cashhome_1000_user_agent||'')}</div>
+            <div class="k">IP</div><div class="v">${escapeHtml(sel.cashhome_1000_user_ip||'')}</div>
+            <div class="k">User-Agent</div><div class="v" style="word-break:break-word;">${escapeHtml(sel.cashhome_1000_user_agent||'')}</div>
 
-                      <div class="k">개인정보 동의</div>
-                      <div class="v">${pOk?'동의함':'미동의'} ${pOk ? `<span style="color:var(--muted)">(${escapeHtml(sel.privacy_ver||'')})</span>` : ''}</div>
+            <div class="k">개인정보 동의</div>
+            <div class="v">${pOk?'동의함':'미동의'} ${pOk ? `<span style="color:var(--muted)">(${escapeHtml(sel.privacy_ver||'')})</span>` : ''}</div>
 
-                      <div class="k">마케팅 동의</div><div class="v">${mOk?'동의함':'미동의'}</div>
+            <div class="k">마케팅 동의</div><div class="v">${mOk?'동의함':'미동의'}</div>
 
-                      <div class="k">처리일시</div><div class="v" id="d_processed">${escapeHtml(sel.cashhome_1000_processed_at||'')}</div>
-                      <div class="k">수정일시</div><div class="v">${escapeHtml(sel.cashhome_1000_updated_at||'')}</div>
-                    </div>
+            <div class="k">처리일시</div><div class="v" id="d_processed">${escapeHtml(sel.cashhome_1000_processed_at||'')}</div>
+            <div class="k">수정일시</div><div class="v">${escapeHtml(sel.cashhome_1000_updated_at||'')}</div>
+          </div>
 
-                    <div class="subhr"></div>
-                    <h3 class="detailTitle" style="font-size:15px;margin:0 0 8px;">요청사항</h3>
-                    <div class="memoBox">${escapeHtml(sel.cashhome_1000_request_memo||'')}</div>
+          <div class="subhr"></div>
+          <h3 class="detailTitle" style="font-size:15px;margin:0 0 8px;">요청사항</h3>
+          <div class="memoBox">${escapeHtml(sel.cashhome_1000_request_memo||'')}</div>
 
-                    <div class="subhr"></div>
-                    <h3 class="detailTitle" style="font-size:15px;margin:0 0 8px;">처리 / 메모 저장</h3>
+          <div class="subhr"></div>
+          <h3 class="detailTitle" style="font-size:15px;margin:0 0 8px;">서류</h3>
+          <div class="docsWrap" id="docsWrap">${docsHtml}</div>
 
-                    <div class="formRow">
-                      <div class="field">
-                        <label for="edit_status">처리상태</label>
-                        <select id="edit_status">
-                          <option value="new" ${st==='new'?'selected':''}>신규</option>
-                          <option value="contacted" ${st==='contacted'?'selected':''}>연락완료</option>
-                          <option value="closed" ${st==='closed'?'selected':''}>종결</option>
-                        </select>
-                      </div>
-                      <div class="field">
-                        <label for="edit_outcome">대출결과</label>
-                        <select id="edit_outcome">
-                          <option value="pending" ${oc==='pending'?'selected':''}>대기</option>
-                          <option value="approved" ${oc==='approved'?'selected':''}>승인</option>
-                          <option value="rejected" ${oc==='rejected'?'selected':''}>부결</option>
-                        </select>
-                      </div>
-                    </div>
+          <div class="subhr"></div>
+          <h3 class="detailTitle" style="font-size:15px;margin:0 0 8px;">처리 / 메모 저장</h3>
 
-                    <div class="field" style="margin-top:10px;">
-                      <label for="edit_note">관리자 메모</label>
-                      <input id="edit_note" type="text" value="${escapeHtml(note)}" placeholder="처리 내용/메모를 입력하세요">
-                    </div>
+          <div class="formRow">
+            <div class="field">
+              <label for="edit_status">처리상태</label>
+              <select id="edit_status">
+                <option value="new" ${st==='new'?'selected':''}>신규</option>
+                <option value="contacted" ${st==='contacted'?'selected':''}>연락완료</option>
+                <option value="closed" ${st==='closed'?'selected':''}>종결</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="edit_outcome">대출결과</label>
+              <select id="edit_outcome">
+                <option value="pending" ${oc==='pending'?'selected':''}>대기</option>
+                <option value="approved" ${oc==='approved'?'selected':''}>승인</option>
+                <option value="rejected" ${oc==='rejected'?'selected':''}>부결</option>
+              </select>
+            </div>
+          </div>
 
-                    <div class="saveBar">
-                      <button class="btn primary" id="saveBtn" type="button">저장</button>
-                      <span class="hint" id="saveHint">※ 변경 후 저장 버튼을 눌러야 DB에 반영됩니다.</span>
-                    </div>
+          <div class="field" style="margin-top:10px;">
+            <label for="edit_note">관리자 메모</label>
+            <input id="edit_note" type="text" value="${escapeHtml(note)}" placeholder="처리 내용/메모를 입력하세요">
+          </div>
 
-                    <input type="hidden" id="csrf_token" value="${escapeHtml(sel.csrf_token || document.getElementById('csrf_token')?.value || '')}">
-                `;
+          <div class="saveBar">
+            <button class="btn primary" id="saveBtn" type="button">저장</button>
+            <span class="hint" id="saveHint">※ 변경 후 저장 버튼을 눌러야 DB에 반영됩니다.</span>
+          </div>
+
+          <input type="hidden" id="csrf_token" value="${escapeHtml(sel.csrf_token || document.getElementById('csrf_token')?.value || '')}">
+        `;
 
                 document.getElementById('saveBtn').addEventListener('click', saveCurrent);
+                bindDocDeleteButtons(box);
 
-                // ✅ 상세가 길어져 레이아웃 변하면 다시 계산
                 autoListHeight();
             }
 
@@ -1729,16 +2083,14 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
                     renderStats(data.stats || {});
 
                     if (data.selected) data.selected.csrf_token = data.csrf_token || '';
-                    renderDetail(data.selected || null);
+                    renderDetail(data.selected || null, data.docs || {});
 
                     const q2 = buildQuery({
                         ajax: 0
                     });
                     history.replaceState(null, '', 'admin_inquiries.php?' + q2);
 
-                    // ✅ ajax 갱신 후에도 다시 한번 보정
                     autoListHeight();
-
                 } catch (e) {
                     alert('네트워크 오류가 발생했습니다.');
                 }
@@ -1747,7 +2099,6 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
             [elStart, elEnd, elStatus, elOutcome].forEach(el => {
                 el.addEventListener('change', () => debounce(() => refresh(false), 80));
             });
-
             [elName, elMemo, elNote].forEach(el => {
                 el.addEventListener('input', () => debounce(() => refresh(false), 180));
             });
@@ -1763,6 +2114,9 @@ $approvedBadgeCount = (int)($stats['approved'] ?? 0);
                     refresh(true);
                 });
             });
+
+            // ✅ 초기 SSR로 렌더된 서류 삭제 버튼도 바인딩
+            bindDocDeleteButtons(document);
 
             updateExcelLink();
             autoListHeight();
