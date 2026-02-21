@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 /**
  * index.php (전체) - 헤더 로고 이미지 적용 버전
+ * ✅ 추가: 신청유형(개인/기업) + 기업정보(자동 펼침)
+ * ✅ 추가: 주소(실거주지/등본주소지) + 다음(카카오) 주소 API
+ * ✅ 추가: 예상 대출기간(1~24개월)
+ * ✅ DB 저장/세션 draft/사전동의(preconsent) 검증 반영
  */
 
 $isHttps = (
@@ -36,7 +40,7 @@ if (!empty($_GET['reset'])) {
 header('X-Frame-Options: SAMEORIGIN');
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: strict-origin-when-cross-origin');
-header("Content-Security-Policy: default-src 'self' 'unsafe-inline' https: data:;");
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://t1.daumcdn.net https://postcode.map.daum.net; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; connect-src 'self' https:; frame-src https://t1.daumcdn.net https://postcode.map.daum.net;");
 
 function h(string $s): string
 {
@@ -83,6 +87,9 @@ function cashhome_consent_ok(): bool
     return (($hasPrivacyAt && $hasMarketingAt && $hasPrivacyVer && $hasMarketingVer) || $hasLegacy);
 }
 
+/**
+ * ✅ 입력 검증 (추가 항목 반영)
+ */
 function validate_inquiry_input(array $in): array
 {
     $name = trim((string)($in['name'] ?? ''));
@@ -90,6 +97,13 @@ function validate_inquiry_input(array $in): array
     $amount = trim((string)($in['amount'] ?? ''));
     $purpose = trim((string)($in['purpose'] ?? ''));
     $memo = trim((string)($in['memo'] ?? ''));
+
+    // ✅ 신규 항목
+    $applicantType = trim((string)($in['applicant_type'] ?? '')); // personal/company
+    $companyInfo = trim((string)($in['company_info'] ?? ''));
+    $addrLive = trim((string)($in['addr_live'] ?? ''));
+    $addrResident = trim((string)($in['addr_resident'] ?? ''));
+    $loanPeriodRaw = trim((string)($in['loan_period'] ?? ''));
 
     $errors = [];
 
@@ -109,6 +123,36 @@ function validate_inquiry_input(array $in): array
 
     if ($purpose === '' || $purpose === '선택 안함') $errors[] = '자금용도를 선택해주세요.';
 
+    // ✅ 신청유형
+    if ($applicantType !== 'personal' && $applicantType !== 'company') {
+        $errors[] = '신청 유형(개인/기업)을 선택해주세요.';
+    }
+
+    // ✅ 주소 2개 (필수)
+    if ($addrLive === '') $errors[] = '주소(실거주지)를 입력해주세요.';
+    if ($addrResident === '') $errors[] = '주소(등본 주소지)를 입력해주세요.';
+
+    // ✅ 예상 대출기간 1~24개월
+    $loanPeriod = 0;
+    if ($loanPeriodRaw === '' || !ctype_digit($loanPeriodRaw)) {
+        $errors[] = '예상 대출기간을 선택해주세요.';
+    } else {
+        $loanPeriod = (int)$loanPeriodRaw;
+        if ($loanPeriod < 1 || $loanPeriod > 24) {
+            $errors[] = '예상 대출기간은 1~24개월 범위로 선택해주세요.';
+        }
+    }
+
+    // ✅ 기업일 때 기업정보 권장(너무 빡세게 막지 않되, 최소 안내)
+    // 원하면 필수로 바꾸려면 아래 주석 해제:
+    if ($applicantType === 'company') {
+        // if ($companyInfo === '' || mb_strlen($companyInfo) < 5) $errors[] = '기업 정보(기업명/직원수/매출/순이익)를 작성해주세요.';
+        if (mb_strlen($companyInfo) > 2000) $errors[] = '기업 정보는 2000자 이하로 입력해주세요.';
+    } else {
+        // 개인이면 기업정보는 저장은 가능하지만 보통 비움
+        if (mb_strlen($companyInfo) > 2000) $errors[] = '기업 정보는 2000자 이하로 입력해주세요.';
+    }
+
     if (mb_strlen($memo) > 1000) $errors[] = '요청사항은 1000자 이하로 입력해주세요.';
 
     return [$errors, [
@@ -117,6 +161,13 @@ function validate_inquiry_input(array $in): array
         'amount' => $amount,
         'purpose' => $purpose,
         'memo' => $memo,
+
+        // ✅ 신규 항목 clean
+        'applicant_type' => $applicantType,
+        'company_info' => $companyInfo,
+        'addr_live' => $addrLive,
+        'addr_resident' => $addrResident,
+        'loan_period' => (string)$loanPeriod,
     ]];
 }
 
@@ -131,12 +182,19 @@ $errorMsg = '';
 
 $draft = $_SESSION['cashhome_inquiry_draft'] ?? null;
 
+// ✅ draft/old 확장
 $old = [
     'name' => is_array($draft) ? (string)($draft['name'] ?? '') : '',
     'phone' => is_array($draft) ? (string)($draft['phone'] ?? '') : '',
     'amount' => is_array($draft) ? (string)($draft['amount'] ?? '') : '',
     'purpose' => is_array($draft) ? (string)($draft['purpose'] ?? '선택 안함') : '선택 안함',
     'memo' => is_array($draft) ? (string)($draft['memo'] ?? '') : '',
+
+    'applicant_type' => is_array($draft) ? (string)($draft['applicant_type'] ?? '') : '',
+    'company_info' => is_array($draft) ? (string)($draft['company_info'] ?? '') : '',
+    'addr_live' => is_array($draft) ? (string)($draft['addr_live'] ?? '') : '',
+    'addr_resident' => is_array($draft) ? (string)($draft['addr_resident'] ?? '') : '',
+    'loan_period' => is_array($draft) ? (string)($draft['loan_period'] ?? '') : '',
 ];
 
 $kakaoErr = (string)($_GET['kakao_error'] ?? '');
@@ -168,6 +226,9 @@ if (($old['name'] ?? '') === '.' || ($old['name'] ?? '') === '·') {
 
 $kakaoOkMsg = $kakaoOk ? '카카오 로그인 완료! 성함이 자동 입력되었습니다.' : '';
 
+/**
+ * ✅ preconsent: 입력값 검증 후 세션 draft 저장
+ */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') === 'preconsent') {
     header('Content-Type: application/json; charset=utf-8');
 
@@ -189,6 +250,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
     exit;
 }
 
+/**
+ * ✅ 실제 접수
+ */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !== 'preconsent') {
 
     $hp = trim((string)($_POST['company_website'] ?? ''));
@@ -203,12 +267,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
 
             [$errs, $clean] = validate_inquiry_input($_POST);
 
+            // ✅ old 저장(에러 시 재표시)
             $old = [
                 'name' => $clean['name'],
                 'phone' => $clean['phone'],
                 'amount' => $clean['amount'],
                 'purpose' => $clean['purpose'] !== '' ? $clean['purpose'] : '선택 안함',
                 'memo' => $clean['memo'],
+
+                'applicant_type' => $clean['applicant_type'],
+                'company_info' => $clean['company_info'],
+                'addr_live' => $clean['addr_live'],
+                'addr_resident' => $clean['addr_resident'],
+                'loan_period' => $clean['loan_period'],
             ];
 
             if (!cashhome_consent_ok()) {
@@ -227,6 +298,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
                 $amount = $clean['amount'];
                 $purpose = $clean['purpose'];
                 $memo = $clean['memo'];
+
+                // ✅ 신규 항목
+                $applicantType = $clean['applicant_type'];
+                $companyInfoText = $clean['company_info'];
+                $addrLive = $clean['addr_live'];
+                $addrResident = $clean['addr_resident'];
+                $loanPeriod = (int)$clean['loan_period'];
 
                 $consent = $_SESSION['cashhome_consent'];
 
@@ -250,9 +328,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
                             cashhome_1000_user_agent,
                             cashhome_1000_customer_name,
                             cashhome_1000_customer_phone,
+
+                            cashhome_1000_addr_live,
+                            cashhome_1000_addr_resident,
+                            cashhome_1000_applicant_type,
+                            cashhome_1000_loan_period,
+
                             cashhome_1000_loan_amount,
                             cashhome_1000_loan_purpose,
                             cashhome_1000_request_memo,
+                            cashhome_1000_company_info,
+
                             cashhome_1000_agree_privacy,
                             cashhome_1000_privacy_policy_version,
                             cashhome_1000_privacy_agreed_at,
@@ -265,9 +351,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
                             :user_agent,
                             :customer_name,
                             :customer_phone,
+
+                            :addr_live,
+                            :addr_resident,
+                            :applicant_type,
+                            :loan_period,
+
                             :loan_amount,
                             :loan_purpose,
                             :request_memo,
+                            :company_info,
+
                             :agree_privacy,
                             :privacy_policy_version,
                             :privacy_agreed_at,
@@ -283,9 +377,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
                         ':user_agent' => $ua !== '' ? mb_substr($ua, 0, 255) : null,
                         ':customer_name' => $name,
                         ':customer_phone' => $phone,
+
+                        ':addr_live' => $addrLive !== '' ? $addrLive : null,
+                        ':addr_resident' => $addrResident !== '' ? $addrResident : null,
+                        ':applicant_type' => $applicantType !== '' ? $applicantType : null,
+                        ':loan_period' => $loanPeriod > 0 ? $loanPeriod : null,
+
                         ':loan_amount' => $amount,
                         ':loan_purpose' => $purpose,
                         ':request_memo' => $memo !== '' ? $memo : null,
+                        ':company_info' => $companyInfoText !== '' ? $companyInfoText : null,
+
                         ':agree_privacy' => 1,
                         ':privacy_policy_version' => $privacyVer,
                         ':privacy_agreed_at' => $privacyAt !== '' ? $privacyAt : $ts,
@@ -345,7 +447,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
                     $consentOk = false;
 
                     $successMsg = '상담 신청이 접수되었습니다. 담당자가 확인 후 연락드리겠습니다.';
-                    $old = ['name' => '', 'phone' => '', 'amount' => '', 'purpose' => '선택 안함', 'memo' => ''];
+                    $old = [
+                        'name' => '',
+                        'phone' => '',
+                        'amount' => '',
+                        'purpose' => '선택 안함',
+                        'memo' => '',
+                        'applicant_type' => '',
+                        'company_info' => '',
+                        'addr_live' => '',
+                        'addr_resident' => '',
+                        'loan_period' => ''
+                    ];
                 } else {
                     $_SESSION['cashhome_inquiry_draft'] = $clean;
                 }
@@ -375,15 +488,9 @@ $disclosure = [
 
 /**
  * ✅ 로고 이미지 경로
- * - 프로젝트에 파일을 업로드해서 아래 경로로 맞춰주세요.
- *   예: /images/ecash-icon.png
- * - 지금은 "아이콘 준비됨" 기준으로 경로만 연결해둡니다.
  */
 $logoImg = '/cashhome_icon/ecash_icon_512.png';
 ?>
-
-
-
 
 <!doctype html>
 <html lang="ko">
@@ -393,6 +500,11 @@ $logoImg = '/cashhome_icon/ecash_icon_512.png';
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0B1220" />
     <title><?= h($brandEn) ?> | <?= h($brandKr) ?> - 빠르고 간편한 상담</title>
+
+    <!-- ✅ 다음(카카오) 주소 API -->
+    <script src="https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
+    
+
     <style>
         :root {
             --bg: #0B1220;
@@ -406,8 +518,6 @@ $logoImg = '/cashhome_icon/ecash_icon_512.png';
             --radius: 18px;
             --radius2: 24px;
             --max: 1120px;
-
-            /* ✅ 헤더 높이 (fixed 보정용) */
             --navH: 74px;
         }
 
@@ -430,8 +540,6 @@ $logoImg = '/cashhome_icon/ecash_icon_512.png';
                 var(--bg);
             color: var(--text);
             line-height: 1.5;
-
-            /* ✅ fixed 헤더가 본문을 덮지 않게 */
             padding-top: var(--navH);
         }
 
@@ -445,16 +553,13 @@ $logoImg = '/cashhome_icon/ecash_icon_512.png';
             padding: 22px 18px 80px;
         }
 
-        /* ✅ 헤더(상단 네비) */
         .nav {
-            /* ✅ sticky -> fixed 로 변경 (끝까지 따라오게) */
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: var(--navH);
             z-index: 30;
-
             backdrop-filter: blur(12px);
             background: rgba(11, 18, 32, .55);
             border-bottom: 1px solid var(--line);
@@ -478,7 +583,6 @@ $logoImg = '/cashhome_icon/ecash_icon_512.png';
             text-decoration: none
         }
 
-        /* ✅ 로고 박스 (기존 E 대신 이미지) */
         .logo {
             width: 50px;
             height: 50px;
@@ -1030,6 +1134,33 @@ $logoImg = '/cashhome_icon/ecash_icon_512.png';
             pointer-events: none;
         }
 
+        /* ✅ 추가: 예시 박스 + 주소찾기 버튼 */
+        .example-box {
+            margin: 8px 0;
+            padding: 12px;
+            border-radius: 14px;
+            border: 1px solid rgba(234, 240, 255, .12);
+            background: rgba(255, 255, 255, .03);
+            font-size: 12px;
+            color: #9DB0D0;
+            line-height: 1.5;
+        }
+
+        .btnAddr {
+            padding: 12px 14px;
+            border-radius: 14px;
+            border: 1px solid rgba(234, 240, 255, .12);
+            background: rgba(255, 255, 255, .04);
+            color: #EAF0FF;
+            font-weight: 800;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .btnAddr:hover {
+            background: rgba(255, 255, 255, .06)
+        }
+
         @media (max-width: 920px) {
             .hero {
                 grid-template-columns: 1fr;
@@ -1056,7 +1187,6 @@ $logoImg = '/cashhome_icon/ecash_icon_512.png';
 </head>
 
 <body>
-    <!-- ✅ 헤더로 분리 -->
     <header class="nav" role="banner">
         <div class="navin">
             <a class="brand" href="#top" aria-label="<?= h($brandEn) ?> 홈으로">
@@ -1154,7 +1284,7 @@ $logoImg = '/cashhome_icon/ecash_icon_512.png';
             <div class="grid">
                 <div class="card box col6">
                     <h3>입력</h3>
-                    <p>성함/연락처/희망금액/자금용도를 입력합니다. (요청사항은 선택)</p>
+                    <p>성함/연락처/희망금액/자금용도 등 항목을 입력합니다.</p>
                 </div>
                 <div class="card box col6">
                     <h3>동의</h3>
@@ -1245,12 +1375,48 @@ COOKIE(PHPSESSID):
                             </div>
                         </div>
 
+                        <!-- ✅ 주소 2개 + 다음 주소 API -->
+                        <div class="row">
+                            <div>
+                                <label for="addr_live">주소 (실거주지) (필수)</label>
+                                <div style="display:flex; gap:8px;">
+                                    <input id="addr_live" name="addr_live" type="text" placeholder="주소찾기를 눌러 입력" required
+                                        value="<?= h($old['addr_live']) ?>" />
+                                    <button type="button" class="btnAddr" onclick="openDaumPostcode('addr_live')">주소찾기</button>
+                                </div>
+                            </div>
+                            <div>
+                                <label for="addr_resident">주소 (등본 주소지) (필수)</label>
+                                <div style="display:flex; gap:8px;">
+                                    <input id="addr_resident" name="addr_resident" type="text" placeholder="주소찾기를 눌러 입력" required
+                                        value="<?= h($old['addr_resident']) ?>" />
+                                    <button type="button" class="btnAddr" onclick="openDaumPostcode('addr_resident')">주소찾기</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ✅ 희망금액 + 대출기간 -->
                         <div class="row">
                             <div>
                                 <label for="amount">희망금액 (필수)</label>
                                 <input id="amount" name="amount" type="text" inputmode="numeric" placeholder="예: 500만원"
                                     required value="<?= h($old['amount']) ?>" />
                             </div>
+                            <div>
+                                <label for="loan_period">예상 대출기간 (필수)</label>
+                                <select id="loan_period" name="loan_period" required>
+                                    <option value="">선택해주세요</option>
+                                    <?php for ($i = 1; $i <= 24; $i++): ?>
+                                        <option value="<?= $i ?>" <?= ((string)$i === (string)$old['loan_period']) ? 'selected' : '' ?>>
+                                            <?= $i ?>개월
+                                        </option>
+                                    <?php endfor; ?>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- ✅ 자금용도 + 신청유형 -->
+                        <div class="row">
                             <div>
                                 <label for="purpose">자금용도 (필수)</label>
                                 <select id="purpose" name="purpose" required>
@@ -1264,10 +1430,35 @@ COOKIE(PHPSESSID):
                                 </select>
                                 <div class="tiny" style="margin-top:6px;">※ “선택 안함”은 접수/동의 진행 불가</div>
                             </div>
+
+                            <div>
+                                <label for="applicant_type">신청 유형 (필수)</label>
+                                <select id="applicant_type" name="applicant_type" required>
+                                    <option value="">선택해주세요</option>
+                                    <option value="personal" <?= ($old['applicant_type'] === 'personal') ? 'selected' : '' ?>>개인</option>
+                                    <option value="company" <?= ($old['applicant_type'] === 'company') ? 'selected' : '' ?>>기업</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- ✅ 기업일 때만 펼쳐지는 기업 정보 -->
+                        <div id="company_block" style="display:none;">
+                            <label for="company_info">기업 정보 (기업일 경우 작성)</label>
+
+                            <div class="example-box">
+                                <b>작성 예시</b><br>
+                                1. 기업명: ○○건설(주)<br>
+                                2. 직원수: 12명<br>
+                                3. 월매출: 8,000만원<br>
+                                4. 월 예상 순이익: 1,200만원
+                            </div>
+
+                            <textarea id="company_info" name="company_info"
+                                placeholder="기업일 경우 위 형식에 맞춰 작성해주세요."><?= h($old['company_info']) ?></textarea>
                         </div>
 
                         <div>
-                            <label for="memo">요청사항 (선택)</label>
+                            <label for="memo">추가정보 (선택)</label>
                             <textarea id="memo" name="memo" placeholder="상담 시 참고할 내용을 적어주세요."><?= h($old['memo']) ?></textarea>
                         </div>
 
@@ -1346,7 +1537,6 @@ COOKIE(PHPSESSID):
             <div class="cols">
                 <div>
                     <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-                        <!-- ✅ 푸터 로고도 이미지로 통일 -->
                         <div class="logo" style="width:34px;height:34px;border-radius:14px;">
                             <img src="<?= h($logoImg) ?>" alt="<?= h($brandEn) ?> 로고" />
                         </div>
@@ -1371,7 +1561,7 @@ COOKIE(PHPSESSID):
                 <div>
                     <div class="pill">개인정보처리방침(요약)</div>
                     <p style="margin:10px 0 0; color:var(--muted); font-size:12px;">
-                        • 수집항목: 성함, 연락처, 희망금액, 자금용도, 상담내용(선택), 접속기록(보안 목적)<br />
+                        • 수집항목: 성함, 연락처, 주소(실거주/등본), 희망금액, 예상대출기간, 자금용도, 상담내용(선택), 접속기록(보안 목적)<br />
                         • 이용목적: 상담 및 안내, 민원 대응, 서비스 품질 개선<br />
                         • 보관기간: 목적 달성 후 지체 없이 파기(관계법령에 따른 보관은 예외)<br />
                         • 문의: <?= h($companyInfo['대표전화']) ?>
@@ -1424,6 +1614,7 @@ COOKIE(PHPSESSID):
             }
         })();
 
+        // 앵커 부드러운 스크롤
         document.querySelectorAll('a[href^="#"]').forEach(a => {
             a.addEventListener('click', (e) => {
                 const id = a.getAttribute('href');
@@ -1439,6 +1630,7 @@ COOKIE(PHPSESSID):
             });
         });
 
+        // TOP 버튼
         const topBtn = document.getElementById('topbtn');
         const onScroll = () => {
             if (topBtn) topBtn.style.display = (window.scrollY > 600) ? 'block' : 'none';
@@ -1452,6 +1644,7 @@ COOKIE(PHPSESSID):
         }));
         onScroll();
 
+        // 폰 번호 자동 포맷
         (function() {
             const phoneEl = document.getElementById('phone');
             if (!phoneEl) return;
@@ -1483,6 +1676,31 @@ COOKIE(PHPSESSID):
                 passive: true
             });
             onInput();
+        })();
+
+        // ✅ 다음(카카오) 주소 API 함수
+        function openDaumPostcode(targetInputId) {
+            new daum.Postcode({
+                oncomplete: function(data) {
+                    const addr = (data.userSelectedType === 'R') ? data.roadAddress : data.jibunAddress;
+                    const el = document.getElementById(targetInputId);
+                    if (el) el.value = addr;
+                }
+            }).open();
+        }
+
+        // ✅ 기업 선택 시 자동 펼침
+        (function() {
+            const typeSel = document.getElementById('applicant_type');
+            const companyBlock = document.getElementById('company_block');
+
+            function toggleCompanyBlock() {
+                const isCompany = typeSel && typeSel.value === 'company';
+                if (companyBlock) companyBlock.style.display = isCompany ? 'block' : 'none';
+            }
+
+            if (typeSel) typeSel.addEventListener('change', toggleCompanyBlock);
+            toggleCompanyBlock(); // 초기 1회
         })();
 
         const form = document.getElementById('applyForm');
