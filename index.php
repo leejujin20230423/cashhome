@@ -6,16 +6,10 @@ declare(strict_types=1);
  * ECASH (이케쉬대부) - index.php
  * - 랜딩페이지 + 상담신청
  * - 동의는 consent.php에서만 완료되며(index.php 체크박스/영역 클릭 시 consent.php로 이동)
- * - 동의 완료(세션) 상태일 때만 최종 접수 가능
+ * - 동의 완료(세션) 상태일 때만 접수 가능
  * - 동의 클릭 전 입력값 필수 검증(누가 동의했는지 증적 확보 목적)
  * - 입력 오류는 팝업(alert)으로 안내
  * - 상담신청 저장: cashhome_1000_inquiries + cashhome_1100_consent_logs
- *
- * ✅ 수정사항(요청하신 “접수 버튼 눌러도 제자리” 대응)
- * 1) 접수 버튼 disabled 제거(항상 클릭 가능)
- * 2) 동의 미완료 상태에서 접수 클릭 시: alert + preconsent 검증 + consent.php로 자동 이동
- * 3) form action을 index.php#apply 로 명확화(해시 때문에 “그자리”처럼 보이는 현상 완화)
- * 4) preconsent fetch 응답이 JSON이 아닐 때도 안전하게 처리(서버 경고/오류로 JSON 깨지는 케이스 방어)
  */
 
 session_start();
@@ -434,8 +428,14 @@ $disclosure = [
             --max: 1120px;
         }
 
-        * { box-sizing: border-box }
-        html, body { height: 100% }
+        * {
+            box-sizing: border-box
+        }
+
+        html,
+        body {
+            height: 100%
+        }
 
         body {
             margin: 0;
@@ -449,7 +449,9 @@ $disclosure = [
             line-height: 1.5;
         }
 
-        a { color: inherit }
+        a {
+            color: inherit
+        }
 
         .wrap {
             max-width: var(--max);
@@ -496,8 +498,17 @@ $disclosure = [
             letter-spacing: .5px;
         }
 
-        .brand strong { display: block; font-size: 14px; letter-spacing: .6px }
-        .brand span { display: block; font-size: 12px; color: var(--muted) }
+        .brand strong {
+            display: block;
+            font-size: 14px;
+            letter-spacing: .6px
+        }
+
+        .brand span {
+            display: block;
+            font-size: 12px;
+            color: var(--muted)
+        }
 
         .navlinks {
             display: flex;
@@ -509,6 +520,7 @@ $disclosure = [
 
         .navlinks a {
             text-decoration: none;
+            /* color: var(--muted); */
             font-size: 13px;
             padding: 8px 10px;
             border-radius: 999px;
@@ -550,7 +562,9 @@ $disclosure = [
             box-shadow: var(--shadow);
         }
 
-        .heroL { padding: 26px 22px; }
+        .heroL {
+            padding: 26px 22px;
+        }
 
         .kicker {
             display: inline-flex;
@@ -579,9 +593,17 @@ $disclosure = [
             letter-spacing: -0.6px;
         }
 
-        .sub { color: var(--muted); margin: 0 0 18px; font-size: 14px; }
+        .sub {
+            color: var(--muted);
+            margin: 0 0 18px;
+            font-size: 14px;
+        }
 
-        .bullets { display: grid; gap: 10px; margin: 14px 0 20px; }
+        .bullets {
+            display: grid;
+            gap: 10px;
+            margin: 14px 0 20px;
+        }
 
         .b {
             display: flex;
@@ -603,10 +625,22 @@ $disclosure = [
             margin-top: 1px;
         }
 
-        .b strong { display: block; font-size: 13px; }
-        .b span { display: block; font-size: 12px; color: var(--muted); }
+        .b strong {
+            display: block;
+            font-size: 13px;
+        }
 
-        .heroBtns { display: flex; gap: 10px; flex-wrap: wrap; }
+        .b span {
+            display: block;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .heroBtns {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
 
         .btnGhost {
             background: transparent;
@@ -619,9 +653,15 @@ $disclosure = [
             font-size: 13px;
         }
 
-        .btnGhost:hover { background: rgba(255, 255, 255, .05); }
+        .btnGhost:hover {
+            background: rgba(255, 255, 255, .05);
+        }
 
-        .heroR { padding: 18px; display: grid; gap: 12px; }
+        .heroR {
+            padding: 18px;
+            display: grid;
+            gap: 12px;
+        }
 
         .mini {
             padding: 14px 14px;
@@ -630,8 +670,16 @@ $disclosure = [
             background: rgba(255, 255, 255, .03);
         }
 
-        .mini h3 { margin: 0 0 8px; font-size: 14px; }
-        .mini p { margin: 0; color: var(--muted); font-size: 12px; }
+        .mini h3 {
+            margin: 0 0 8px;
+            font-size: 14px;
+        }
+
+        .mini p {
+            margin: 0;
+            color: var(--muted);
+            font-size: 12px;
+        }
 
         .grid {
             display: grid;
@@ -640,16 +688,44 @@ $disclosure = [
             margin-top: 14px;
         }
 
-        .col4 { grid-column: span 4; }
-        .col6 { grid-column: span 6; }
-        .col12 { grid-column: span 12; }
+        .col4 {
+            grid-column: span 4;
+        }
 
-        .sectionTitle { margin: 26px 0 10px; font-size: 18px; letter-spacing: -0.2px; }
-        .sectionSub { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+        .col6 {
+            grid-column: span 6;
+        }
 
-        .box { padding: 18px; }
-        .box h3 { margin: 0 0 8px; font-size: 15px; }
-        .box p { margin: 0; color: var(--muted); font-size: 13px; }
+        .col12 {
+            grid-column: span 12;
+        }
+
+        .sectionTitle {
+            margin: 26px 0 10px;
+            font-size: 18px;
+            letter-spacing: -0.2px;
+        }
+
+        .sectionSub {
+            margin: 0 0 12px;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .box {
+            padding: 18px;
+        }
+
+        .box h3 {
+            margin: 0 0 8px;
+            font-size: 15px;
+        }
+
+        .box p {
+            margin: 0;
+            color: var(--muted);
+            font-size: 13px;
+        }
 
         .pill {
             display: inline-flex;
@@ -663,14 +739,29 @@ $disclosure = [
             font-size: 12px;
         }
 
-        .formWrap { padding: 18px; }
-        form { display: grid; gap: 10px; }
+        .formWrap {
+            padding: 18px;
+        }
 
-        .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        form {
+            display: grid;
+            gap: 10px;
+        }
 
-        label { font-size: 12px; color: var(--muted); }
+        .row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
 
-        input, select, textarea {
+        label {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        input,
+        select,
+        textarea {
             width: 100%;
             padding: 12px 12px;
             border-radius: 14px;
@@ -680,14 +771,23 @@ $disclosure = [
             outline: none;
         }
 
-        input:focus, select:focus, textarea:focus {
+        input:focus,
+        select:focus,
+        textarea:focus {
             border-color: rgba(110, 231, 255, .55);
             box-shadow: 0 0 0 3px rgba(110, 231, 255, .12);
         }
 
-        textarea { min-height: 110px; resize: vertical; }
+        textarea {
+            min-height: 110px;
+            resize: vertical;
+        }
 
-        .checks { display: grid; gap: 10px; margin-top: 6px; }
+        .checks {
+            display: grid;
+            gap: 10px;
+            margin-top: 6px;
+        }
 
         /* ====== ✅ UX 업그레이드: Consent 카드형 ====== */
         .consentCard {
@@ -710,7 +810,9 @@ $disclosure = [
             border-color: rgba(234, 240, 255, .18);
         }
 
-        .consentCard:active { transform: translateY(0px); }
+        .consentCard:active {
+            transform: translateY(0px);
+        }
 
         .consentIcon {
             width: 38px;
@@ -744,7 +846,10 @@ $disclosure = [
             box-shadow: 0 0 16px rgba(110, 231, 255, .55);
         }
 
-        .consentBody { flex: 1 1 auto; min-width: 0 }
+        .consentBody {
+            flex: 1 1 auto;
+            min-width: 0
+        }
 
         .consentTitle {
             font-weight: 900;
@@ -796,6 +901,11 @@ $disclosure = [
             font-weight: 900;
         }
 
+        .consentCard[aria-disabled="true"] {
+            cursor: pointer;
+            /* 클릭은 가능(사전검증 후 이동), 단 내부 체크박스는 없음 */
+        }
+
         .consentCard:focus {
             outline: none;
             box-shadow: 0 0 0 3px rgba(110, 231, 255, .12);
@@ -811,8 +921,13 @@ $disclosure = [
             font-size: 13px;
         }
 
-        .alert.ok { border-color: rgba(110, 231, 255, .35); }
-        .alert.err { border-color: rgba(255, 120, 120, .35); }
+        .alert.ok {
+            border-color: rgba(110, 231, 255, .35);
+        }
+
+        .alert.err {
+            border-color: rgba(255, 120, 120, .35);
+        }
 
         .footer {
             margin-top: 22px;
@@ -827,7 +942,10 @@ $disclosure = [
             gap: 14px;
         }
 
-        .kv { display: grid; gap: 6px; }
+        .kv {
+            display: grid;
+            gap: 6px;
+        }
 
         .kv div {
             display: flex;
@@ -835,10 +953,21 @@ $disclosure = [
             align-items: flex-start;
         }
 
-        .kv b { min-width: 110px; color: rgba(234, 240, 255, .85); }
+        .kv b {
+            min-width: 110px;
+            color: rgba(234, 240, 255, .85);
+        }
 
-        .hr { height: 1px; background: var(--line); margin: 14px 0; }
-        .tiny { font-size: 11px; color: rgba(157, 176, 208, .9); }
+        .hr {
+            height: 1px;
+            background: var(--line);
+            margin: 14px 0;
+        }
+
+        .tiny {
+            font-size: 11px;
+            color: rgba(157, 176, 208, .9);
+        }
 
         .topbtn {
             position: fixed;
@@ -855,7 +984,6 @@ $disclosure = [
             display: none;
         }
 
-        /* disabled 스타일은 남겨두되, 현재는 submit 버튼에 disabled를 안 씁니다 */
         button[disabled] {
             opacity: .45;
             cursor: not-allowed;
@@ -863,11 +991,26 @@ $disclosure = [
         }
 
         @media (max-width: 920px) {
-            .hero { grid-template-columns: 1fr; }
-            .row { grid-template-columns: 1fr; }
-            .col4, .col6 { grid-column: span 12; }
-            h1 { font-size: 30px; }
-            .footer .cols { grid-template-columns: 1fr; }
+            .hero {
+                grid-template-columns: 1fr;
+            }
+
+            .row {
+                grid-template-columns: 1fr;
+            }
+
+            .col4,
+            .col6 {
+                grid-column: span 12;
+            }
+
+            h1 {
+                font-size: 30px;
+            }
+
+            .footer .cols {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -889,7 +1032,7 @@ $disclosure = [
                 <a href="#disclosure">고지</a>
                 <a href="#apply">상담신청</a>
                 <a class="cta" href="#apply">빠른 상담</a>
-                <a class="btnGhost" href="admin_login.php" rel="nofollow">관리자</a>
+                <a class="btnGhost" href="admin_login.php" rel="nofollow">관리자 로그인</a>
             </div>
         </div>
     </div>
@@ -979,7 +1122,7 @@ $disclosure = [
                 </div>
                 <div class="card box col6">
                     <h3>접수</h3>
-                    <p>동의 완료 상태에서만 접수가 완료됩니다. (미완료 시 동의 페이지로 안내)</p>
+                    <p>동의 완료 상태에서만 접수 버튼이 동작합니다.</p>
                 </div>
                 <div class="card box col6">
                     <h3>확인 연락</h3>
@@ -1019,8 +1162,7 @@ $disclosure = [
                         <div class="alert err" role="alert"><?= h($errorMsg) ?></div>
                     <?php endif; ?>
 
-                    <!-- ✅ action 명확화: index.php#apply -->
-                    <form id="applyForm" method="post" action="index.php#apply" autocomplete="on" novalidate>
+                    <form id="applyForm" method="post" action="#apply" autocomplete="on" novalidate>
                         <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>" />
 
                         <!-- Honeypot -->
@@ -1127,8 +1269,7 @@ $disclosure = [
                             <?php endif; ?>
                         </div>
 
-                        <!-- ✅ 수정: disabled 제거(항상 클릭 가능) -->
-                        <button class="cta" type="submit" style="justify-self:start;">
+                        <button class="cta" type="submit" style="justify-self:start;" <?= $consentOk ? '' : 'disabled' ?>>
                             상담 신청 접수
                         </button>
 
@@ -1203,7 +1344,10 @@ $disclosure = [
                 const el = document.querySelector(id);
                 if (!el) return;
                 e.preventDefault();
-                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                el.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start'
+                });
                 history.replaceState(null, '', id);
             });
         });
@@ -1213,8 +1357,13 @@ $disclosure = [
         const onScroll = () => {
             topBtn.style.display = (window.scrollY > 600) ? 'block' : 'none';
         };
-        window.addEventListener('scroll', onScroll, { passive: true });
-        topBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+        window.addEventListener('scroll', onScroll, {
+            passive: true
+        });
+        topBtn.addEventListener('click', () => window.scrollTo({
+            top: 0,
+            behavior: 'smooth'
+        }));
         onScroll();
 
         // ✅ 전화번호 하이픈 자동 포맷 (010-1234-5678 / 02 예외 포함)
@@ -1246,8 +1395,12 @@ $disclosure = [
                 if (before !== formatted) phoneEl.value = formatted;
             }
 
-            phoneEl.addEventListener('input', onInput, { passive: true });
-            phoneEl.addEventListener('blur', onInput, { passive: true });
+            phoneEl.addEventListener('input', onInput, {
+                passive: true
+            });
+            phoneEl.addEventListener('blur', onInput, {
+                passive: true
+            });
 
             // 초기값 포맷
             onInput();
@@ -1261,22 +1414,12 @@ $disclosure = [
             fd.append('action', 'preconsent');
 
             try {
-                const res = await fetch('index.php', { // ✅ location.href 대신 고정(해시 영향 제거)
+                const res = await fetch(location.href, {
                     method: 'POST',
                     body: fd,
                     credentials: 'same-origin'
                 });
-
-                // ✅ JSON 깨짐 방어(php notice/warning 등)
-                const text = await res.text();
-                let data = null;
-                try {
-                    data = JSON.parse(text);
-                } catch (e) {
-                    console.log('[preconsent non-json response]', text);
-                    alert('서버 응답 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
-                    return;
-                }
+                const data = await res.json();
 
                 if (!data.ok) {
                     alert(data.message || '입력값을 확인해주세요.');
@@ -1311,18 +1454,13 @@ $disclosure = [
             });
         }
 
-        // ✅ 수정: 동의 미완료 상태에서 "접수" 누르면 -> 입력검증+동의페이지로 이동
+        // ✅ 동의 없는데 접수 버튼 눌러지는 경우 방지
         form.addEventListener('submit', (e) => {
             const consentOk = <?= $consentOk ? 'true' : 'false' ?>;
-
             if (!consentOk) {
                 e.preventDefault();
-                alert('동의가 완료되어야 접수할 수 있습니다. 입력값 확인 후 동의 페이지로 이동합니다.');
-                preConsentAndGo();
-                return;
+                alert('동의가 완료되어야 접수할 수 있습니다. 입력 완료 후 동의 페이지에서 동의를 완료해주세요.');
             }
-
-            // consentOk=true면 정상 submit -> PHP가 DB 저장 처리
         });
     </script>
 </body>
