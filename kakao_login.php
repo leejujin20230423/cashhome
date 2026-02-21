@@ -3,7 +3,7 @@ declare(strict_types=1);
 session_start();
 
 const KAKAO_REST_API_KEY = '여기에_REST_API_KEY';
-const KAKAO_CLIENT_SECRET = '여기에_CLIENT_SECRET'; // 카카오 콘솔에 ON이면 필요 :contentReference[oaicite:2]{index=2}
+const KAKAO_CLIENT_SECRET = 'd6cf1b953dfb5b853674b0c265090b1b'; // 카카오 콘솔에 ON이면 필요 :contentReference[oaicite:2]{index=2}
 const KAKAO_REDIRECT_URI = 'https://your-domain.com/kakao_callback.php';
 
 $state = bin2hex(random_bytes(16));
