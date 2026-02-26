@@ -1715,6 +1715,7 @@ function build_report_mail_body(PDO $pdo): array
         $html = '<table cellpadding="0" cellspacing="0" style="' . $tableStyle . '">';
         $html .= '<thead><tr>'
             . '<th align="center" style="' . $thStyle . '">순번</th>'
+            . '<th align="left" style="' . $thStyle . '">대출번호</th>'
             . '<th align="left" style="' . $thStyle . '">신청일시</th>'
             . '<th align="left" style="' . $thStyle . '">신청자</th>'
             . '<th align="left" style="' . $thStyle . '">연락처</th>'
@@ -1727,6 +1728,7 @@ function build_report_mail_body(PDO $pdo): array
         foreach ($rows as $r) {
             $i++;
             $bg = ($i % 2 === 0) ? 'background:#fafafa;' : '';
+            $no4 = $h($loanNo4($r));
 $created = $h((string)($r['cashhome_1000_created_at'] ?? ''));
             $name = $h((string)($r['cashhome_1000_customer_name'] ?? ''));
             $phone = $h((string)($r['cashhome_1000_customer_phone'] ?? ''));
@@ -1735,6 +1737,7 @@ $created = $h((string)($r['cashhome_1000_created_at'] ?? ''));
             $oc = $h(outcome_label((string)normalize_outcome_legacy((string)($r['cashhome_1000_outcome'] ?? OC_PENDING))));
 $html .= '<tr style="' . $bg . '">'
                 . '<td align="center" style="' . $tdStyle . '">' . $i . '</td>'
+                . '<td style="' . $tdStyle . '">' . $no4 . '</td>'
                 . '<td style="' . $tdStyle . '">' . $created . '</td>'
                 . '<td style="' . $tdStyle . '">' . $name . '</td>'
                 . '<td style="' . $tdStyle . '">' . $phone . '</td>'

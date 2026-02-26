@@ -201,9 +201,11 @@ function build_report_mail_body(PDO $pdo): array
     };
 
     $loanNo = static function (array $r): string {
-        // ✅ cashhome_1000_loan_no를 그대로 사용 (id는 사용/출력 안 함)
+        // ✅ cashhome_1000_loan_no의 뒷자리 4자리만 노출 (id는 사용/출력 안 함)
         $raw = (string)($r['cashhome_1000_loan_no'] ?? '');
-        return trim($raw);
+        $raw = trim($raw);
+        if ($raw === '') return '';
+        return mb_substr($raw, -4);
     };
 
     /**
