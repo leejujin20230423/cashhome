@@ -3,7 +3,7 @@
 require_once __DIR__ . '/vendor/autoload.php';
 
 $dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
-$dotenv->safeLoad(); // load() 말고 safeLoad()
+$dotenv->safeLoad();
 
 require_once __DIR__ . '/mail_sender.php';
 
@@ -14,7 +14,7 @@ const DB_PASS = 'lokia0528**';
 
 const OC_PENDING   = '1'; // 대기
 const OC_REVIEWING = '2'; // 검토중
-const OC_APPROVED  = '3'; // 승인 (master만)
+const OC_APPROVED  = '3'; // 승인
 const OC_PAID      = '4'; // 출금완료
 const OC_REJECTED  = '5'; // 부결
 
@@ -22,8 +22,8 @@ const OC_REJECTED  = '5'; // 부결
 const ST_NEW          = 'new';
 const ST_CONTACTED    = 'contacted';
 const ST_PROGRESSING  = 'progressing';
-const ST_CLOSED_OK    = 'closed_ok';      // master만
-const ST_CLOSED_ISSUE = 'closed_issue';   // master만
+const ST_CLOSED_OK    = 'closed_ok';
+const ST_CLOSED_ISSUE = 'closed_issue';
 
 // closed 상태 판별용
 const CLOSED_STATUSES = [ST_CLOSED_OK, ST_CLOSED_ISSUE];
@@ -51,7 +51,6 @@ function send_report_mail(PDO $pdo): bool
 
     try {
         $ms = new MailSender();
-        // HTML 우선, 실패 시 MailSender 내부에서 mail()/SMTP fallback 처리
         return $ms->sendHtmlTo(REPORT_MAIL_TO, $subject, $html, $plain);
     } catch (Throwable $e) {
         error_log('[report_mail] ' . $e->getMessage());
@@ -60,8 +59,7 @@ function send_report_mail(PDO $pdo): bool
 }
 
 /**
- * ✅ CLI 모드로 리포트 전송
- * (웹 접근으로 보내지 않도록 안전장치)
+ * ✅ CLI 모드로 리포트 전송 (웹 접근 차단)
  */
 if (PHP_SAPI === 'cli') {
     global $argv;
@@ -75,7 +73,6 @@ if (PHP_SAPI === 'cli') {
 
 function fetch_rows_for_period(PDO $pdo, string $startDT, string $endDT): array
 {
-    // 리포트는 필터/권한과 무관하게 전체를 기준으로 잡는 게 일반적이어서 별도 조회
     $stmt = $pdo->prepare("
       SELECT
         cashhome_1000_id,
@@ -107,7 +104,6 @@ function fetch_rows_for_period(PDO $pdo, string $startDT, string $endDT): array
 
 function fmt_kr_date(string $ymd): string
 {
-    // YYYY-MM-DD -> YY년 MM월 DD일
     if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $ymd, $m)) return $ymd;
     $yy = substr($m[1], 2, 2);
     return sprintf('%s년 %s월 %s일', $yy, $m[2], $m[3]);
@@ -118,10 +114,8 @@ function normalize_outcome_legacy(string $s): string
     $s = trim($s);
     if ($s === '') return OC_PENDING;
 
-    // 이미 '1'~'5'라면 그대로
     if (preg_match('/^[1-5]$/', $s)) return $s;
 
-    // 기존 문자열(레거시) 호환
     return match ($s) {
         'pending'  => OC_PENDING,
         'approved' => OC_APPROVED,
@@ -130,10 +124,6 @@ function normalize_outcome_legacy(string $s): string
     };
 }
 
-/**
- * outcome 값 기준으로 그룹핑
- * @return array<string, array<int, array>>
- */
 function group_by_outcome(array $rows): array
 {
     $g = [];
@@ -144,10 +134,6 @@ function group_by_outcome(array $rows): array
     return $g;
 }
 
-/**
- * status 값 기준으로 그룹핑
- * @return array<string, array<int, array>>
- */
 function group_by_status(array $rows): array
 {
     $g = [];
@@ -171,10 +157,9 @@ function build_report_mail_body(PDO $pdo): array
     $endDT   = $endYmd . ' 23:59:59';
 
     $rows = fetch_rows_for_period($pdo, $startDT, $endDT);
-
     $total = count($rows);
 
-    // ✅ outcome/status 집계 (원본에서 주석처리되어 있던 부분 복구)
+    // ✅ 원본에서 주석 때문에 깨지던 집계 복구
     $groupOutcome = group_by_outcome($rows);
     $groupStatusM = group_by_status($rows);
 
@@ -208,13 +193,6 @@ function build_report_mail_body(PDO $pdo): array
         return htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     };
 
-    $loanNo4 = static function (array $r): string {
-        $raw = (string)($r['cashhome_1000_loan_no'] ?? '');
-        $raw = trim($raw);
-        if ($raw === '') return '';
-        return mb_substr($raw, -4);
-    };
-
     $fmtAmt = static function ($v): string {
         $n = (string)$v;
         $n = preg_replace('/[^\d]/', '', $n);
@@ -223,10 +201,10 @@ function build_report_mail_body(PDO $pdo): array
     };
 
     /**
-     * ✅ 표 렌더링 (NO/id 대신 "순번"을 출력)
-     * - 각 테이블마다 1부터 다시 시작
+     * ✅ 메일 표: 모든 리스트에서 id/대출번호 같은 값은 제거
+     * ✅ 대신 순번(1,2,3...)만 출력
      */
-    $renderTable = static function (array $rows) use ($h, $loanNo4, $fmtAmt): string {
+    $renderTable = static function (array $rows) use ($h, $fmtAmt): string {
         if (!$rows) {
             return '<div style="color:#666;font-size:12px;">(없음)</div>';
         }
@@ -234,7 +212,6 @@ function build_report_mail_body(PDO $pdo): array
         $html = '<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:13px;">';
         $html .= '<thead><tr style="background:#f2f2f2;">'
             . '<th align="center" width="60">순번</th>'
-            . '<th align="left">대출번호</th>'
             . '<th align="left">신청자</th>'
             . '<th align="right">금액</th>'
             . '<th align="left">연락처</th>'
@@ -245,11 +222,9 @@ function build_report_mail_body(PDO $pdo): array
             $name  = $h((string)($r['cashhome_1000_customer_name'] ?? ''));
             $amt   = $h($fmtAmt($r['cashhome_1000_loan_amount'] ?? ''));
             $phone = $h((string)($r['cashhome_1000_customer_phone'] ?? ''));
-            $no4   = $h($loanNo4($r));
 
             $html .= '<tr>'
                 . '<td align="center">' . $i . '</td>'
-                . '<td>' . $no4 . '</td>'
                 . '<td>' . $name . '</td>'
                 . '<td align="right">' . $amt . '</td>'
                 . '<td>' . $phone . '</td>'
@@ -298,7 +273,7 @@ function build_report_mail_body(PDO $pdo): array
         $html .= $renderTable($rows2);
     }
 
-    // status 섹션(master 기준)
+    // status 섹션
     $html .= '<h3 style="margin:22px 0 8px 0;">처리상태 요약</h3>';
     $html .= '<div style="margin:0 0 10px 0;color:#333;">master=신규 / 연락완료 / 대출진행중 / 정상종결 / 문제종결</div>';
 
@@ -319,7 +294,6 @@ function build_report_mail_body(PDO $pdo): array
     $html .= '<div style="margin-top:18px;color:#888;font-size:12px;">※ 본 메일은 3시간마다 자동 발송됩니다.</div>';
     $html .= '</div>';
 
-    // plain fallback(간단 요약)
     $plain = "(조회기간 표시 {$startYmd} ~ {$endYmd})\n"
         . "대출정보\n"
         . "1.대출 총건수: {$total}\n"
