@@ -1682,7 +1682,7 @@ function build_report_mail_body(PDO $pdo): array
 
     // status(master 기준) 집계 (위에서 그룹핑)
 
-    $subject = '[CASHHOME] 3시간 통계 리포트 (' . fmt_kr_date($startYmd) . ' ~ ' . fmt_kr_date($endYmd) . ')';
+    $subject = '[CASHHOME] 최근 3개월 통계 리포트 (' . fmt_kr_date($startYmd) . ' ~ ' . fmt_kr_date($endYmd) . ')';
 
     $h = static function (string $s): string {
         return htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
