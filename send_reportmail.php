@@ -159,13 +159,13 @@ function build_report_mail_body(PDO $pdo): array
     $rows = fetch_rows_for_period($pdo, $startDT, $endDT);
     $total = count($rows);
 
-    // ✅ 원본에서 주석 때문에 깨지던 집계 복구
     $groupOutcome = group_by_outcome($rows);
     $groupStatusM = group_by_status($rows);
 
-    $cntPending  = count($groupOutcome[OC_PENDING] ?? []);
-    $cntRejected = count($groupOutcome[OC_REJECTED] ?? []);
-    $cntApproved = count($groupOutcome[OC_APPROVED] ?? []);
+    $cntPending   = count($groupOutcome[OC_PENDING] ?? []);
+    $cntReviewing = count($groupOutcome[OC_REVIEWING] ?? []);
+    $cntRejected  = count($groupOutcome[OC_REJECTED] ?? []);
+    $cntApproved  = count($groupOutcome[OC_APPROVED] ?? []);
 
     // token 만료(5시간 미만)
     $expiring = [];
@@ -200,11 +200,18 @@ function build_report_mail_body(PDO $pdo): array
         return number_format((int)$n);
     };
 
+    $loanNo = static function (array $r): string {
+        // ✅ cashhome_1000_loan_no를 그대로 사용 (id는 사용/출력 안 함)
+        $raw = (string)($r['cashhome_1000_loan_no'] ?? '');
+        return trim($raw);
+    };
+
     /**
-     * ✅ 메일 표: 모든 리스트에서 id/대출번호 같은 값은 제거
-     * ✅ 대신 순번(1,2,3...)만 출력
+     * ✅ 메일 표(모든 리스트 공통)
+     * - cashhome_1000_id 제거
+     * - 순번(각 표마다 1부터) + 대출번호(cashhome_1000_loan_no) 추가
      */
-    $renderTable = static function (array $rows) use ($h, $fmtAmt): string {
+    $renderTable = static function (array $rows) use ($h, $fmtAmt, $loanNo): string {
         if (!$rows) {
             return '<div style="color:#666;font-size:12px;">(없음)</div>';
         }
@@ -212,19 +219,22 @@ function build_report_mail_body(PDO $pdo): array
         $html = '<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:13px;">';
         $html .= '<thead><tr style="background:#f2f2f2;">'
             . '<th align="center" width="60">순번</th>'
+            . '<th align="left" width="140">대출번호</th>'
             . '<th align="left">신청자</th>'
-            . '<th align="right">금액</th>'
-            . '<th align="left">연락처</th>'
+            . '<th align="right" width="120">금액</th>'
+            . '<th align="left" width="140">연락처</th>'
             . '</tr></thead><tbody>';
 
         $i = 1;
         foreach ($rows as $r) {
+            $no    = $h($loanNo($r));
             $name  = $h((string)($r['cashhome_1000_customer_name'] ?? ''));
             $amt   = $h($fmtAmt($r['cashhome_1000_loan_amount'] ?? ''));
             $phone = $h((string)($r['cashhome_1000_customer_phone'] ?? ''));
 
             $html .= '<tr>'
                 . '<td align="center">' . $i . '</td>'
+                . '<td>' . $no . '</td>'
                 . '<td>' . $name . '</td>'
                 . '<td align="right">' . $amt . '</td>'
                 . '<td>' . $phone . '</td>'
@@ -247,6 +257,7 @@ function build_report_mail_body(PDO $pdo): array
     $html .= '<ul style="margin:0 0 12px 18px;padding:0;">'
         . '<li>대출 총건수: <b>' . $total . '</b></li>'
         . '<li>대기 총건수: <b>' . $cntPending . '</b></li>'
+        . '<li>검토 총건수: <b>' . $cntReviewing . '</b></li>'
         . '<li>부결 총건수: <b>' . $cntRejected . '</b></li>'
         . '<li>승인 총건수: <b>' . $cntApproved . '</b></li>'
         . '</ul>';
@@ -294,12 +305,14 @@ function build_report_mail_body(PDO $pdo): array
     $html .= '<div style="margin-top:18px;color:#888;font-size:12px;">※ 본 메일은 3시간마다 자동 발송됩니다.</div>';
     $html .= '</div>';
 
+    // plain fallback
     $plain = "(조회기간 표시 {$startYmd} ~ {$endYmd})\n"
         . "대출정보\n"
         . "1.대출 총건수: {$total}\n"
         . "2.대기 총건수: {$cntPending}\n"
-        . "3.부결 총건수: {$cntRejected}\n"
-        . "4.승인 총건수: {$cntApproved}\n";
+        . "3.검토 총건수: {$cntReviewing}\n"
+        . "4.부결 총건수: {$cntRejected}\n"
+        . "5.승인 총건수: {$cntApproved}\n";
 
     return [$subject, $html, $plain];
 }
