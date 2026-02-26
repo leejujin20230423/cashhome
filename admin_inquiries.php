@@ -1617,9 +1617,9 @@ function row_line(array $r): string
     $amt  = (string)($r['cashhome_1000_loan_amount'] ?? '');
     $phone = (string)($r['cashhome_1000_customer_phone'] ?? '');
     $loanNo = (string)($r['cashhome_1000_loan_no'] ?? '');
-    $displayNo = ($loanNo !== '' && $loanNo !== '00') ? substr($loanNo, -4) : (string)($r['cashhome_1000_id'] ?? '');
+    $displayNo = ($loanNo !== '' && $loanNo !== '00') ? substr($loanNo, -4) : '';
 
-    return "-신청자: {$name}\n-금액: {$amt}\n-연락처: {$phone}\n-대출렌덤번호: {$displayNo}\n";
+    return "-신청자: {$name}\n-금액: {$amt}\n-연락처: {$phone}\n";
 }
 
 function build_report_mail_body(PDO $pdo): array
@@ -1658,6 +1658,7 @@ function build_report_mail_body(PDO $pdo): array
 
     // outcome 집계
     $cntPending  = count($groupOutcome[OC_PENDING] ?? []);
+    $cntReviewing = count($groupOutcome[OC_REVIEWING] ?? []);
     $cntRejected = count($groupOutcome[OC_REJECTED] ?? []);
     $cntApproved = count($groupOutcome[OC_APPROVED] ?? []);
 
@@ -1713,38 +1714,34 @@ function build_report_mail_body(PDO $pdo): array
 
         $html = '<table cellpadding="0" cellspacing="0" style="' . $tableStyle . '">';
         $html .= '<thead><tr>'
-            . '<th align="left" style="' . $thStyle . '">NO</th>'
+            . '<th align="center" style="' . $thStyle . '">순번</th>'
             . '<th align="left" style="' . $thStyle . '">신청일시</th>'
             . '<th align="left" style="' . $thStyle . '">신청자</th>'
             . '<th align="left" style="' . $thStyle . '">연락처</th>'
             . '<th align="right" style="' . $thStyle . '">금액</th>'
             . '<th align="left" style="' . $thStyle . '">처리상태</th>'
             . '<th align="left" style="' . $thStyle . '">대출결과</th>'
-            . '<th align="left" style="' . $thStyle . '">대출번호</th>'
             . '</tr></thead><tbody>';
 
         $i = 0;
         foreach ($rows as $r) {
             $i++;
             $bg = ($i % 2 === 0) ? 'background:#fafafa;' : '';
-            $id = $h((string)($r['cashhome_1000_id'] ?? ''));
-            $created = $h((string)($r['cashhome_1000_created_at'] ?? ''));
+$created = $h((string)($r['cashhome_1000_created_at'] ?? ''));
             $name = $h((string)($r['cashhome_1000_customer_name'] ?? ''));
             $phone = $h((string)($r['cashhome_1000_customer_phone'] ?? ''));
             $amt  = $h($fmtAmt($r['cashhome_1000_loan_amount'] ?? ''));
             $st = $h(status_label((string)($r['cashhome_1000_status'] ?? ST_NEW)));
             $oc = $h(outcome_label((string)normalize_outcome_legacy((string)($r['cashhome_1000_outcome'] ?? OC_PENDING))));
-            $no4 = $h($loanNo4($r));
-
-            $html .= '<tr style="' . $bg . '">'
-                . '<td style="' . $tdStyle . '">' . $id . '</td>'
+$html .= '<tr style="' . $bg . '">'
+                . '<td align="center" style="' . $tdStyle . '">' . $i . '</td>'
                 . '<td style="' . $tdStyle . '">' . $created . '</td>'
                 . '<td style="' . $tdStyle . '">' . $name . '</td>'
                 . '<td style="' . $tdStyle . '">' . $phone . '</td>'
                 . '<td align="right" style="' . $tdStyle . '">' . $amt . '</td>'
                 . '<td style="' . $tdStyle . '">' . $st . '</td>'
                 . '<td style="' . $tdStyle . '">' . $oc . '</td>'
-                . '<td style="' . $tdStyle . '">' . $no4 . '</td>'
+                
                 . '</tr>';
         }
 
@@ -1763,6 +1760,7 @@ function build_report_mail_body(PDO $pdo): array
     $html .= '<ul style="margin:0 0 12px 18px;padding:0;">'
         . '<li>대출 총건수: <b>' . $total . '</b></li>'
         . '<li>대기 총건수: <b>' . $cntPending . '</b></li>'
+        . '<li>검토 총건수: <b>' . $cntReviewing . '</b></li>'
         . '<li>부결 총건수: <b>' . $cntRejected . '</b></li>'
         . '<li>승인 총건수: <b>' . $cntApproved . '</b></li>'
         . '</ul>';
