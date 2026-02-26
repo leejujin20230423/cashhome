@@ -439,7 +439,19 @@ function build_where_and_params(array $f): array
         $params[':st'] = $f['status'];
     }
     if ($f['outcome'] !== 'all') {
-        $where .= " AND i.cashhome_1000_outcome = :oc ";
+        // ✅ 레거시/NULL/빈값까지 포함해서 outcome을 "코드(1~5)" 기준으로 필터링
+        // DB에 'pending' 같은 문자열이 저장되어 있거나, 아예 NULL/''로 들어간 레거시 데이터가 있어도
+        // 화면의 "대출결과" 필터가 정상 동작하도록 SQL에서 정규화해서 비교한다.
+        $normOutcome = "CASE
+            WHEN i.cashhome_1000_outcome IS NULL OR i.cashhome_1000_outcome = '' THEN '" . OC_PENDING . "'
+            WHEN i.cashhome_1000_outcome = 'pending' THEN '" . OC_PENDING . "'
+            WHEN i.cashhome_1000_outcome = 'reviewing' THEN '" . OC_REVIEWING . "'
+            WHEN i.cashhome_1000_outcome = 'approved' THEN '" . OC_APPROVED . "'
+            WHEN i.cashhome_1000_outcome = 'paid' THEN '" . OC_PAID . "'
+            WHEN i.cashhome_1000_outcome = 'rejected' THEN '" . OC_REJECTED . "'
+            ELSE i.cashhome_1000_outcome
+        END";
+        $where .= " AND ($normOutcome) = :oc ";
         $params[':oc'] = $f['outcome'];
     }
     if ($f['name'] !== '') {
