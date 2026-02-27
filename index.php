@@ -1520,6 +1520,9 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
     <section class="hero">
       <div class="card heroL main_header">
         <div class="kicker"><span class="dot"></span> 신속 · 정확 · 친절 상담</div>
+        <div class="heroFxArea" aria-hidden="true">
+          <div class="heroFxText"><span class="fxEn"><?= h($brandEn) ?></span> <span class="fxKr">필요한 순간</span></div>
+        </div>
         <h1><?= h($brandEn) ?>,<br />필요한 순간에 <span style="color:var(--accent)">빠르게</span> 안내드립니다.</h1>
         <p class="sub">
           이케쉬대부(ECASH)는 상담 신청 접수 후 담당자가 확인하여 연락드립니다.
