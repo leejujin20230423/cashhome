@@ -741,12 +741,12 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
     }
 
     * {
-      box-sizing: border-box
+      box-sizing: border-box;
     }
 
     html,
     body {
-      height: 100%
+      height: 100%;
     }
 
     body {
@@ -763,7 +763,7 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
     }
 
     a {
-      color: inherit
+      color: inherit;
     }
 
     .wrap {
@@ -772,6 +772,7 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
       padding: 22px 18px 80px;
     }
 
+    /* ===== NAV ===== */
     .nav {
       position: fixed;
       top: 0;
@@ -793,15 +794,14 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      flex-wrap: nowrap; 
+      flex-wrap: nowrap;
     }
-    
 
     .brand {
       display: flex;
       align-items: center;
       gap: 12px;
-      text-decoration: none
+      text-decoration: none;
     }
 
     .logo {
@@ -827,13 +827,13 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
     .brand strong {
       display: block;
       font-size: 14px;
-      letter-spacing: .6px
+      letter-spacing: .6px;
     }
 
     .brand span {
       display: block;
       font-size: 12px;
-      color: var(--muted)
+      color: var(--muted);
     }
 
     .navlinks {
@@ -841,7 +841,7 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
       gap: 14px;
       align-items: center;
       flex-wrap: wrap;
-      justify-content: flex-end
+      justify-content: flex-end;
     }
 
     .navlinks a {
@@ -890,6 +890,29 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
       background: rgba(255, 255, 255, .05);
     }
 
+    .installBtn {
+      height: 38px;
+      padding: 0 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      white-space: nowrap;
+      flex: 0 0 auto;
+      background: #2c7be5;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: .2s;
+    }
+
+    .installBtn:hover {
+      background: #1a68d1;
+    }
+
+    /* ===== HERO / CARDS ===== */
     .hero {
       padding: 26px 0 10px;
       display: grid;
@@ -942,34 +965,8 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
       font-size: 14px;
     }
 
-    .bullets {
-      display: grid;
-      gap: 10px;
-      margin: 14px 0 20px;
-    }
-
-    .b {
-      display: flex;
-      gap: 10px;
-      align-items: flex-start;
-      padding: 10px 12px;
-      border-radius: var(--radius);
-      border: 1px solid var(--line);
-      background: rgba(255, 255, 255, .03);
-    }
-
-    .b strong {
-      display: block;
-      font-size: 13px;
-    }
-
-    .b span {
-      display: block;
-      font-size: 12px;
-      color: var(--muted);
-    }
-
     .heroBtns {
+      margin-top: 18px;
       display: flex;
       gap: 10px;
       flex-wrap: wrap;
@@ -982,7 +979,7 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
     }
 
     .mini {
-      padding: 14px 14px;
+      padding: 14px;
       border-radius: var(--radius2);
       border: 1px solid var(--line);
       background: rgba(255, 255, 255, .03);
@@ -999,6 +996,7 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
       font-size: 20px;
     }
 
+    /* ===== GRID / SECTIONS ===== */
     .grid {
       display: grid;
       grid-template-columns: repeat(12, 1fr);
@@ -1057,6 +1055,7 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
       font-size: 12px;
     }
 
+    /* ===== FORM ===== */
     .formWrap {
       padding: 18px;
     }
@@ -1081,7 +1080,7 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
     select,
     textarea {
       width: 100%;
-      padding: 12px 12px;
+      padding: 12px;
       border-radius: 14px;
       border: 1px solid var(--line);
       background: rgba(8, 12, 24, .55);
@@ -1111,7 +1110,7 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
       display: flex;
       gap: 12px;
       align-items: flex-start;
-      padding: 12px 12px;
+      padding: 12px;
       border: 1px solid var(--line);
       border-radius: 18px;
       background: rgba(255, 255, 255, .03);
@@ -1161,7 +1160,7 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
 
     .consentBody {
       flex: 1 1 auto;
-      min-width: 0
+      min-width: 0;
     }
 
     .consentTitle {
@@ -1231,67 +1230,6 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
       border-color: rgba(255, 120, 120, .35);
     }
 
-    .footer {
-      margin-top: 22px;
-      padding: 18px;
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    .footer .cols {
-      display: grid;
-      grid-template-columns: 1.2fr .8fr;
-      gap: 14px;
-    }
-
-    .kv {
-      display: grid;
-      gap: 6px;
-    }
-
-    .kv div {
-      display: flex;
-      gap: 10px;
-      align-items: flex-start;
-    }
-
-    .kv b {
-      min-width: 110px;
-      color: rgba(234, 240, 255, .85);
-    }
-
-    .hr {
-      height: 1px;
-      background: var(--line);
-      margin: 14px 0;
-    }
-
-    .tiny {
-      font-size: 11px;
-      color: rgba(157, 176, 208, .9);
-    }
-
-    .topbtn {
-      position: fixed;
-      right: 16px;
-      bottom: 16px;
-      z-index: 50;
-      padding: 10px 12px;
-      border-radius: 999px;
-      border: 1px solid var(--line);
-      background: rgba(16, 26, 51, .8);
-      color: var(--text);
-      cursor: pointer;
-      box-shadow: var(--shadow);
-      display: none;
-    }
-
-    button[disabled] {
-      opacity: .45;
-      cursor: not-allowed;
-      filter: grayscale(20%);
-    }
-
     .action-row {
       display: flex;
       gap: 12px;
@@ -1327,39 +1265,442 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
     }
 
     .btnAddr:hover {
-      background: rgba(255, 255, 255, .06)
+      background: rgba(255, 255, 255, .06);
     }
 
-    .installBtn {
-      height: 38px;
-      /* ✅ 원하는 고정 높이 */
-      padding: 0 14px;
-      /* ✅ 세로 padding 제거 */
-      display: inline-flex;
-      /* ✅ 내용 정렬 안정 */
+    /* ===== INPUT ADDON ===== */
+    .inputAddon {
+      position: relative;
+      width: 100%;
+    }
+
+    .inputAddon input {
+      width: 100%;
+      padding-right: 70px;
+    }
+
+    .addonRight {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 13px;
+      color: var(--muted);
+      pointer-events: none;
+      user-select: none;
+    }
+
+    /* ===== TOP BUTTON ===== */
+    .topbtn {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      z-index: 50;
+      padding: 10px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(16, 26, 51, .8);
+      color: var(--text);
+      cursor: pointer;
+      box-shadow: var(--shadow);
+      display: none;
+    }
+
+    button[disabled] {
+      opacity: .45;
+      cursor: not-allowed;
+      filter: grayscale(20%);
+    }
+
+    .tiny {
+      font-size: 11px;
+      color: rgba(157, 176, 208, .9);
+    }
+
+    /* ===== FOOTER ===== */
+    .footer {
+      margin-top: 22px;
+      padding: 18px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .footer .cols {
+      display: grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap: 14px;
+    }
+
+    .kv {
+      display: grid;
+      gap: 6px;
+    }
+
+    .kv div {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+
+    .kv b {
+      min-width: 110px;
+      color: rgba(234, 240, 255, .85);
+    }
+
+    .hr {
+      height: 1px;
+      background: var(--line);
+      margin: 14px 0;
+    }
+
+    /* =========================================================
+     ✅ Hero background watermark text (heroFxArea) - FIXED
+     - 상단만 표시(슬라이더 아래로 내려가지 않게)
+     - Shine은 텍스트 박스 안에서만
+     - 무한 반복(사라졌다 다시 등장)
+  ========================================================= */
+
+    /* ✅ 왼쪽 main header 카드 배경을 body와 동일하게(투명) */
+    .card.heroL.main_header {
+      background: transparent !important;
+    }
+
+    /* ✅ 상단 고정 영역만 효과 */
+    .heroFxArea {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 220px;
+      z-index: 1;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    /* ✅ 실제 콘텐츠는 위로 */
+    .main_header> :not(.heroFxArea) {
+      position: relative;
+      z-index: 2;
+    }
+
+    .heroFxText {
+      position: absolute;
+      left: 50%;
+      top: 58%;
+      transform: translate(-50%, -50%) scale(.42);
+      transform-origin: center;
+
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      white-space: nowrap;
+      line-height: 1;
+      font-size: clamp(34px, 5.6vw, 76px);
+
+      color: rgba(255, 255, 255, .10);
+      text-shadow: 0 10px 44px rgba(0, 0, 0, .25);
+
+      opacity: 0;
+      filter: blur(14px);
+
+      will-change: transform, opacity, filter;
+      animation: heroFxApproach 6.8s cubic-bezier(.22, 1, .36, 1) infinite;
+
+      /* ✅ shine 번짐 방지 */
+      padding: 10px 16px;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .heroFxText .fxEn {
+      color: rgba(255, 255, 255, .11);
+    }
+
+    .heroFxText .fxKr {
+      color: rgba(255, 255, 255, .09);
+    }
+
+    .heroFxText::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      /* ✅ -35% 같은 값 금지 */
+      background: linear-gradient(135deg,
+          rgba(255, 255, 255, 0) 0%,
+          rgba(255, 255, 255, 0) 38%,
+          rgba(110, 231, 255, .45) 49%,
+          rgba(167, 139, 250, .35) 53%,
+          rgba(255, 255, 255, 0) 65%,
+          rgba(255, 255, 255, 0) 100%);
+      mix-blend-mode: screen;
+      opacity: 0;
+      transform: translate(-140%, -140%);
+      will-change: transform, opacity;
+      animation: heroFxShine 6.8s linear infinite;
+    }
+
+    @keyframes heroFxApproach {
+      0% {
+        opacity: 0;
+        filter: blur(14px);
+        transform: translate(-50%, -50%) scale(.42);
+      }
+
+      10% {
+        opacity: .07;
+      }
+
+      28% {
+        opacity: .14;
+        filter: blur(2px);
+        transform: translate(-50%, -50%) scale(1.12);
+      }
+
+      40% {
+        opacity: .14;
+        filter: blur(0);
+        transform: translate(-50%, -50%) scale(1.00);
+      }
+
+      68% {
+        opacity: .14;
+        filter: blur(0);
+        transform: translate(-50%, -50%) scale(1.00);
+      }
+
+      82% {
+        opacity: 0;
+        filter: blur(10px);
+        transform: translate(-50%, -50%) scale(.98);
+      }
+
+      100% {
+        opacity: 0;
+        filter: blur(14px);
+        transform: translate(-50%, -50%) scale(.42);
+      }
+    }
+
+    @keyframes heroFxShine {
+
+      0%,
+      40% {
+        opacity: 0;
+        transform: translate(-140%, -140%);
+      }
+
+      52% {
+        opacity: 1;
+        transform: translate(-120%, -120%);
+      }
+
+      66% {
+        opacity: 1;
+        transform: translate(140%, 140%);
+      }
+
+      74%,
+      100% {
+        opacity: 0;
+        transform: translate(140%, 140%);
+      }
+    }
+
+    /* ===== Premium left card 3D slider (main_header) ===== */
+    .main_header {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .mhWrap {
+      
+      margin-top: 18px;
+    }
+
+    .mhViewport {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: var(--radius2);
+      padding: 22px;
+      min-height: 192px;
+      overflow: hidden;
+      background: rgba(16, 26, 51, .45);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .04);
+    }
+
+    .mhBg {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+    }
+
+    .mhBgA,
+    .mhBgB {
+      
+      position: absolute;
+      /* inset: -12%; */
+      background-size: cover;
+      background-position: center;
+      filter: blur(0px);
+      transform: scale(1.08);
+      opacity: 0;
+      transition:
+        opacity .9s cubic-bezier(.22, 1, .36, 1),
+        transform 3.8s cubic-bezier(.22, 1, .36, 1);
+    }
+
+    .mhBgOverlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(11, 18, 32, .10) 0%, rgba(11, 18, 32, .55) 55%, rgba(11, 18, 32, .78) 100%);
+      backdrop-filter: blur(2px);
+    }
+
+    .mhDeck {
+      position: relative;
+      z-index: 1;
+      perspective: 1200px;
+      height: 138px;
+    }
+
+    .mhSlide {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      gap: 18px;
+      align-items: flex-start;
+      padding: 18px;
+      border-radius: 18px;
+      border: 1px solid rgba(234, 240, 255, .10);
+      background: rgba(11, 18, 32, .35);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, .28);
+      opacity: 0;
+      transform: translateX(18%) rotateY(52deg) scale(.98);
+      transform-origin: left center;
+      transition:
+        transform .72s cubic-bezier(.22, 1, .36, 1),
+        opacity .72s cubic-bezier(.22, 1, .36, 1),
+        filter .72s cubic-bezier(.22, 1, .36, 1);
+    }
+
+    .mhSlide::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 18px;
+      pointer-events: none;
+      background: linear-gradient(90deg, rgba(255, 255, 255, .10), rgba(255, 255, 255, 0) 42%);
+    }
+
+    .mhSlide.isActive {
+      opacity: 1;
+      transform: translateX(0) rotateY(0) scale(1);
+    }
+
+    .mhSlide.isPrev {
+      opacity: 0;
+      transform: translateX(-18%) rotateY(-62deg) scale(.98);
+      transform-origin: right center;
+    }
+
+    .mhSlide.isNext {
+      opacity: 0;
+      transform: translateX(18%) rotateY(62deg) scale(.98);
+    }
+
+    .mhNo {
+      width: 56px;
+      height: 56px;
+      flex: 0 0 56px;
+      border-radius: 16px;
+      display: flex;
       align-items: center;
       justify-content: center;
+      font-weight: 800;
+      letter-spacing: .5px;
+      color: rgba(234, 240, 255, .92);
+      background: linear-gradient(180deg, rgba(110, 231, 255, .18), rgba(167, 139, 250, .18));
+      border: 1px solid rgba(234, 240, 255, .16);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .25);
+    }
 
-      line-height: 1;
-      /* ✅ 라인높이로 늘어나는 현상 방지 */
-      white-space: nowrap;
-      /* ✅ 줄바꿈 방지 */
-      flex: 0 0 auto;
-      /* ✅ flex에서 늘어나지 않게 */
+    .mhTitle {
+      display: block;
+      font-size: 18px;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
 
-      background: #2c7be5;
-      color: #fff;
-      border: none;
-      border-radius: 6px;
+    .mhDesc {
+      margin: 0;
+      color: rgba(234, 240, 255, .76);
+      line-height: 1.55;
+    }
+
+    .mhBody {
+      padding-top: 2px;
+    }
+
+    .mhArrow {
+      position: absolute;
+      z-index: 2;
+      bottom: 18px;
+      width: 38px;
+      height: 38px;
+      border-radius: 14px;
+      border: 1px solid rgba(234, 240, 255, .14);
+      background: rgba(16, 26, 51, .55);
+      color: rgba(234, 240, 255, .85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
       cursor: pointer;
-      font-size: 14px;
-      transition: 0.2s;
+      transition: transform .18s ease, background .18s ease, border-color .18s ease;
     }
 
-    .installBtn:hover {
-      background: #1a68d1;
+    .mhArrow:hover {
+      transform: translateY(-1px);
+      background: rgba(16, 26, 51, .75);
+      border-color: rgba(234, 240, 255, .22);
     }
 
+    .mhPrev {
+      left: 18px;
+    }
+
+    .mhNext {
+      right: 18px;
+    }
+
+    .mhDots {
+      position: absolute;
+      z-index: 2;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 28px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .mhDot {
+      width: 18px;
+      height: 6px;
+      border-radius: 999px;
+      border: 1px solid rgba(234, 240, 255, .12);
+      background: rgba(234, 240, 255, .10);
+      cursor: pointer;
+      transition: width .22s ease, background .22s ease, border-color .22s ease, opacity .22s ease;
+      opacity: .6;
+    }
+
+    .mhDot.isOn {
+      width: 28px;
+      background: rgba(110, 231, 255, .55);
+      border-color: rgba(110, 231, 255, .55);
+      opacity: 1;
+    }
+
+    /* ===== ANIM: consent glow ===== */
     @keyframes consentGlow {
       0% {
         box-shadow: 0 0 0 rgba(110, 231, 255, 0);
@@ -1374,36 +1715,11 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
       }
     }
 
-    .inputAddon {
-      position: relative;
-      width: 100%;
-    }
-
-    .inputAddon input {
-      width: 100%;
-      padding-right: 70px;
-      /* 오른쪽 '만원' 공간 확보 */
-    }
-
-    .addonRight {
-      position: absolute;
-      right: 14px;
-      top: 50%;
-      transform: translateY(-50%);
-      font-size: 13px;
-      color: var(--muted);
-      pointer-events: none;
-      user-select: none;
-    }
-
     .consent-highlight {
       animation: consentGlow 1s ease-in-out 3;
     }
 
-    #apply2 {
-      scroll-margin-top: 120px;
-    }
-
+    /* ===== RESPONSIVE ===== */
     @media (max-width: 920px) {
       .hero {
         grid-template-columns: 1fr;
@@ -1422,68 +1738,53 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
         font-size: 30px;
       }
 
-      .inputAddon {
-        position: relative;
-        width: 100%;
-      }
-
-      .inputAddon input {
-        width: 100%;
-        padding-right: 70px;
-        /* 오른쪽 '만원' 공간 확보 */
-      }
-
-      .addonRight {
-        position: absolute;
-        right: 14px;
-        top: 50%;
-        transform: translateY(-50%);
-        font-size: 13px;
-        color: var(--muted);
-        pointer-events: none;
-        user-select: none;
-      }
-
       .footer .cols {
         grid-template-columns: 1fr;
       }
-    }
-  
 
-/* ===== Premium left card 3D slider (main_header) ===== */
-.main_header{position:relative; overflow:hidden;}
-.mhWrap{margin-top:18px;}
-.mhViewport{position:relative; border:1px solid var(--line); border-radius:var(--radius2); padding:22px; min-height:192px; overflow:hidden; background:rgba(16,26,51,.45); box-shadow:inset 0 0 0 1px rgba(255,255,255,.04);}
-.mhBg{position:absolute; inset:0; z-index:0;}
-.mhBgA,.mhBgB{position:absolute; inset:-12%; background-size:cover; background-position:center; filter:blur(0px); transform:scale(1.08); opacity:0; transition:opacity .9s cubic-bezier(.22,1,.36,1), transform 3.8s cubic-bezier(.22,1,.36,1);}
-.mhBgOverlay{position:absolute; inset:0; background:linear-gradient(180deg, rgba(11,18,32,.10) 0%, rgba(11,18,32,.55) 55%, rgba(11,18,32,.78) 100%); backdrop-filter: blur(2px);}
-.mhDeck{position:relative; z-index:1; perspective:1200px; height:138px;}
-.mhSlide{position:absolute; inset:0; display:flex; gap:18px; align-items:flex-start; padding:18px 18px 18px 18px; border-radius:18px; border:1px solid rgba(234,240,255,.10); background:rgba(11,18,32,.35); box-shadow:0 18px 40px rgba(0,0,0,.28); opacity:0; transform:translateX(18%) rotateY(52deg) scale(.98); transform-origin:left center; transition:transform .72s cubic-bezier(.22,1,.36,1), opacity .72s cubic-bezier(.22,1,.36,1), filter .72s cubic-bezier(.22,1,.36,1);}
-.mhSlide::after{content:""; position:absolute; inset:0; border-radius:18px; pointer-events:none; background:linear-gradient(90deg, rgba(255,255,255,.10), rgba(255,255,255,0) 42%);}
-.mhSlide.isActive{opacity:1; transform:translateX(0) rotateY(0deg) scale(1); }
-.mhSlide.isPrev{opacity:0; transform:translateX(-18%) rotateY(-62deg) scale(.98); transform-origin:right center;}
-.mhSlide.isNext{opacity:0; transform:translateX(18%) rotateY(62deg) scale(.98); }
-.mhNo{width:56px; height:56px; flex:0 0 56px; border-radius:16px; display:flex; align-items:center; justify-content:center; font-weight:800; letter-spacing:.5px; color:rgba(234,240,255,.92); background:linear-gradient(180deg, rgba(110,231,255,.18), rgba(167,139,250,.18)); border:1px solid rgba(234,240,255,.16); box-shadow:0 10px 30px rgba(0,0,0,.25);}
-.mhTitle{display:block; font-size:18px; font-weight:800; margin-bottom:6px;}
-.mhDesc{margin:0; color:rgba(234,240,255,.76); line-height:1.55;}
-.mhBody{padding-top:2px;}
-.mhArrow{position:absolute; z-index:2; bottom:18px; width:38px; height:38px; border-radius:14px; border:1px solid rgba(234,240,255,.14); background:rgba(16,26,51,.55); color:rgba(234,240,255,.85); display:flex; align-items:center; justify-content:center; cursor:pointer; transition:transform .18s ease, background .18s ease, border-color .18s ease;}
-.mhArrow:hover{transform:translateY(-1px); background:rgba(16,26,51,.75); border-color:rgba(234,240,255,.22);}
-.mhPrev{left:18px;}
-.mhNext{right:18px;}
-.mhDots{position:absolute; z-index:2; left:50%; transform:translateX(-50%); bottom:28px; display:flex; gap:8px; align-items:center;}
-.mhDot{width:18px; height:6px; border-radius:999px; border:1px solid rgba(234,240,255,.12); background:rgba(234,240,255,.10); cursor:pointer; transition:width .22s ease, background .22s ease, border-color .22s ease, opacity .22s ease; opacity:.6;}
-.mhDot.isOn{width:28px; background:rgba(110,231,255,.55); border-color:rgba(110,231,255,.55); opacity:1;}
-@media (max-width: 920px){
-  .mhViewport{min-height:210px; padding:18px;}
-  .mhDeck{height:160px;}
-  .mhSlide{padding:16px; gap:14px;}
-  .mhNo{width:52px; height:52px; border-radius:16px;}
-  .mhTitle{font-size:17px;}
-  .mhDots{bottom:22px;}
-  .mhArrow{bottom:14px;}
-}
-</style>
+      .mhViewport {
+        min-height: 210px;
+        padding: 18px;
+      }
+
+      .mhDeck {
+        height: 160px;
+      }
+
+      .mhSlide {
+        padding: 16px;
+        gap: 14px;
+      }
+
+      .mhNo {
+        width: 52px;
+        height: 52px;
+        border-radius: 16px;
+      }
+
+      .mhTitle {
+        font-size: 17px;
+      }
+
+      .mhDots {
+        bottom: 22px;
+      }
+
+      .mhArrow {
+        bottom: 14px;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .heroFxArea {
+        height: 190px;
+      }
+
+      .heroFxText {
+        top: 62%;
+      }
+    }
+  </style>
 </head>
 
 <body>
@@ -1528,7 +1829,7 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
           이케쉬대부(ECASH)는 상담 신청 접수 후 담당자가 확인하여 연락드립니다.
           (※ 실제 조건은 심사/신용도/상품에 따라 달라질 수 있습니다.)
         </p>
-        
+
         <div class="mhWrap" aria-label="핵심 장점 슬라이더">
           <div class="mhBg" aria-hidden="true">
             <div class="mhBgA"></div>
@@ -1538,41 +1839,41 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
 
           <div class="mhViewport">
             <div class="mhDeck">
-          <article class="mhSlide" data-bg="/cashhome_bg/hero-1.webp" aria-label="간편 심사">
-            <div class="mhNo">01</div>
-            <div class="mhBody">
-              <strong class="mhTitle">간편 심사</strong>
-              <p class="mhDesc">기본 정보 입력으로 빠르게 접수하고, 담당자가 확인 후 안내드립니다.</p>
-            </div>
-          </article>
-          <article class="mhSlide" data-bg="/cashhome_bg/hero-2.webp" aria-label="안전한 개인정보 수집">
-            <div class="mhNo">02</div>
-            <div class="mhBody">
-              <strong class="mhTitle">안전한 개인정보 수집</strong>
-              <p class="mhDesc">필수 항목만 최소 수집하며, 입력 완료 후 동의 절차를 진행합니다.</p>
-            </div>
-          </article>
-          <article class="mhSlide" data-bg="/cashhome_bg/hero-3.webp" aria-label="투명한 고지">
-            <div class="mhNo">03</div>
-            <div class="mhBody">
-              <strong class="mhTitle">투명한 고지</strong>
-              <p class="mhDesc">필수 고지 사항을 명확히 안내하고, 절차를 단계별로 확인할 수 있습니다.</p>
-            </div>
-          </article>
-          <article class="mhSlide" data-bg="/cashhome_bg/hero-4.webp" aria-label="맞춤 상담">
-            <div class="mhNo">04</div>
-            <div class="mhBody">
-              <strong class="mhTitle">맞춤 상담</strong>
-              <p class="mhDesc">신용도/상품 조건에 따라 가능한 옵션을 정리해 드립니다.</p>
-            </div>
-          </article>
-          <article class="mhSlide" data-bg="/cashhome_bg/hero-5.webp" aria-label="빠른 회신">
-            <div class="mhNo">05</div>
-            <div class="mhBody">
-              <strong class="mhTitle">빠른 회신</strong>
-              <p class="mhDesc">접수 후 담당자가 확인하여 빠르게 연락드립니다.</p>
-            </div>
-          </article>
+              <article class="mhSlide" data-bg="/cashhome_bg/hero-1.webp" aria-label="간편 심사">
+                <div class="mhNo">01</div>
+                <div class="mhBody">
+                  <strong class="mhTitle">간편 심사</strong>
+                  <p class="mhDesc">기본 정보 입력으로 빠르게 접수하고, 담당자가 확인 후 안내드립니다.</p>
+                </div>
+              </article>
+              <article class="mhSlide" data-bg="/cashhome_bg/hero-2.webp" aria-label="안전한 개인정보 수집">
+                <div class="mhNo">02</div>
+                <div class="mhBody">
+                  <strong class="mhTitle">안전한 개인정보 수집</strong>
+                  <p class="mhDesc">필수 항목만 최소 수집하며, 입력 완료 후 동의 절차를 진행합니다.</p>
+                </div>
+              </article>
+              <article class="mhSlide" data-bg="/cashhome_bg/hero-3.webp" aria-label="투명한 고지">
+                <div class="mhNo">03</div>
+                <div class="mhBody">
+                  <strong class="mhTitle">투명한 고지</strong>
+                  <p class="mhDesc">필수 고지 사항을 명확히 안내하고, 절차를 단계별로 확인할 수 있습니다.</p>
+                </div>
+              </article>
+              <article class="mhSlide" data-bg="/cashhome_bg/hero-4.webp" aria-label="맞춤 상담">
+                <div class="mhNo">04</div>
+                <div class="mhBody">
+                  <strong class="mhTitle">맞춤 상담</strong>
+                  <p class="mhDesc">신용도/상품 조건에 따라 가능한 옵션을 정리해 드립니다.</p>
+                </div>
+              </article>
+              <article class="mhSlide" data-bg="/cashhome_bg/hero-5.webp" aria-label="빠른 회신">
+                <div class="mhNo">05</div>
+                <div class="mhBody">
+                  <strong class="mhTitle">빠른 회신</strong>
+                  <p class="mhDesc">접수 후 담당자가 확인하여 빠르게 연락드립니다.</p>
+                </div>
+              </article>
             </div>
 
             <button class="mhArrow mhPrev" type="button" aria-label="이전">
@@ -2360,82 +2661,82 @@ index.php 스크립트 (전체)
       });
     }
   </script>
-<script>
-  (function(){
-    const root = document.querySelector('.main_header');
-    if(!root) return;
+  <script>
+    (function() {
+      const root = document.querySelector('.main_header');
+      if (!root) return;
 
-    const slides = Array.from(root.querySelectorAll('.mhSlide'));
-    const dots = Array.from(root.querySelectorAll('.mhDot'));
-    const prevBtn = root.querySelector('.mhPrev');
-    const nextBtn = root.querySelector('.mhNext');
-    const bgA = root.querySelector('.mhBgA');
-    const bgB = root.querySelector('.mhBgB');
-    let bgToggle = false;
+      const slides = Array.from(root.querySelectorAll('.mhSlide'));
+      const dots = Array.from(root.querySelectorAll('.mhDot'));
+      const prevBtn = root.querySelector('.mhPrev');
+      const nextBtn = root.querySelector('.mhNext');
+      const bgA = root.querySelector('.mhBgA');
+      const bgB = root.querySelector('.mhBgB');
+      let bgToggle = false;
 
-    let idx = 0;
-    let timer = null;
-    const AUTOPLAY_MS = 3800;
+      let idx = 0;
+      let timer = null;
+      const AUTOPLAY_MS = 3800;
 
-    function setBg(url){
-      const next = bgToggle ? bgA : bgB;
-      const cur  = bgToggle ? bgB : bgA;
-      bgToggle = !bgToggle;
+      function setBg(url) {
+        const next = bgToggle ? bgA : bgB;
+        const cur = bgToggle ? bgB : bgA;
+        bgToggle = !bgToggle;
 
-      next.style.backgroundImage = `url('${url}')`;
-      next.style.opacity = '1';
-      next.style.transform = 'scale(1.03)';
+        next.style.backgroundImage = `url('${url}')`;
+        next.style.opacity = '1';
+        next.style.transform = 'scale(1.03)';
 
-      cur.style.opacity = '0';
-      cur.style.transform = 'scale(1.08)';
-    }
+        cur.style.opacity = '0';
+        cur.style.transform = 'scale(1.08)';
+      }
 
-    function render(nextIdx, dir){
-      const n = slides.length;
-      idx = (nextIdx + n) % n;
+      function render(nextIdx, dir) {
+        const n = slides.length;
+        idx = (nextIdx + n) % n;
 
-      slides.forEach((el,i)=>{
-        el.classList.remove('isActive','isPrev','isNext');
-        if(i === idx) el.classList.add('isActive');
-        else if(i === (idx-1+n)%n) el.classList.add('isPrev');
-        else if(i === (idx+1)%n) el.classList.add('isNext');
-      });
+        slides.forEach((el, i) => {
+          el.classList.remove('isActive', 'isPrev', 'isNext');
+          if (i === idx) el.classList.add('isActive');
+          else if (i === (idx - 1 + n) % n) el.classList.add('isPrev');
+          else if (i === (idx + 1) % n) el.classList.add('isNext');
+        });
 
-      dots.forEach((d,i)=> d.classList.toggle('isOn', i===idx));
+        dots.forEach((d, i) => d.classList.toggle('isOn', i === idx));
 
-      const bg = slides[idx].getAttribute('data-bg');
-      if(bg) setBg(bg);
-    }
+        const bg = slides[idx].getAttribute('data-bg');
+        if (bg) setBg(bg);
+      }
 
-    function go(step){
-      render(idx + step, step);
-      restart();
-    }
-
-    function restart(){
-      if(timer) clearInterval(timer);
-      timer = setInterval(()=> render(idx+1, 1), AUTOPLAY_MS);
-    }
-
-    // init
-    render(0, 1);
-    restart();
-
-    prevBtn && prevBtn.addEventListener('click', ()=>go(-1));
-    nextBtn && nextBtn.addEventListener('click', ()=>go(1));
-    dots.forEach(d=>{
-      d.addEventListener('click', ()=>{
-        const target = parseInt(d.getAttribute('data-idx')||'0',10);
-        render(target, target>idx ? 1 : -1);
+      function go(step) {
+        render(idx + step, step);
         restart();
-      });
-    });
+      }
 
-    // pause on hover (premium feel)
-    root.addEventListener('mouseenter', ()=> timer && clearInterval(timer));
-    root.addEventListener('mouseleave', ()=> restart());
-  })();
-</script>
+      function restart() {
+        if (timer) clearInterval(timer);
+        timer = setInterval(() => render(idx + 1, 1), AUTOPLAY_MS);
+      }
+
+      // init
+      render(0, 1);
+      restart();
+
+      prevBtn && prevBtn.addEventListener('click', () => go(-1));
+      nextBtn && nextBtn.addEventListener('click', () => go(1));
+      dots.forEach(d => {
+        d.addEventListener('click', () => {
+          const target = parseInt(d.getAttribute('data-idx') || '0', 10);
+          render(target, target > idx ? 1 : -1);
+          restart();
+        });
+      });
+
+      // pause on hover (premium feel)
+      root.addEventListener('mouseenter', () => timer && clearInterval(timer));
+      root.addEventListener('mouseleave', () => restart());
+    })();
+  </script>
 </body>
 
 </html>
