@@ -1448,7 +1448,42 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
         grid-template-columns: 1fr;
       }
     }
-  </style>
+  
+
+/* ===== Premium left card 3D slider (main_header) ===== */
+.main_header{position:relative; overflow:hidden;}
+.mhWrap{margin-top:18px;}
+.mhViewport{position:relative; border:1px solid var(--line); border-radius:var(--radius2); padding:22px; min-height:192px; overflow:hidden; background:rgba(16,26,51,.45); box-shadow:inset 0 0 0 1px rgba(255,255,255,.04);}
+.mhBg{position:absolute; inset:0; z-index:0;}
+.mhBgA,.mhBgB{position:absolute; inset:-12%; background-size:cover; background-position:center; filter:blur(0px); transform:scale(1.08); opacity:0; transition:opacity .9s cubic-bezier(.22,1,.36,1), transform 3.8s cubic-bezier(.22,1,.36,1);}
+.mhBgOverlay{position:absolute; inset:0; background:linear-gradient(180deg, rgba(11,18,32,.10) 0%, rgba(11,18,32,.55) 55%, rgba(11,18,32,.78) 100%); backdrop-filter: blur(2px);}
+.mhDeck{position:relative; z-index:1; perspective:1200px; height:138px;}
+.mhSlide{position:absolute; inset:0; display:flex; gap:18px; align-items:flex-start; padding:18px 18px 18px 18px; border-radius:18px; border:1px solid rgba(234,240,255,.10); background:rgba(11,18,32,.35); box-shadow:0 18px 40px rgba(0,0,0,.28); opacity:0; transform:translateX(18%) rotateY(52deg) scale(.98); transform-origin:left center; transition:transform .72s cubic-bezier(.22,1,.36,1), opacity .72s cubic-bezier(.22,1,.36,1), filter .72s cubic-bezier(.22,1,.36,1);}
+.mhSlide::after{content:""; position:absolute; inset:0; border-radius:18px; pointer-events:none; background:linear-gradient(90deg, rgba(255,255,255,.10), rgba(255,255,255,0) 42%);}
+.mhSlide.isActive{opacity:1; transform:translateX(0) rotateY(0deg) scale(1); }
+.mhSlide.isPrev{opacity:0; transform:translateX(-18%) rotateY(-62deg) scale(.98); transform-origin:right center;}
+.mhSlide.isNext{opacity:0; transform:translateX(18%) rotateY(62deg) scale(.98); }
+.mhNo{width:56px; height:56px; flex:0 0 56px; border-radius:16px; display:flex; align-items:center; justify-content:center; font-weight:800; letter-spacing:.5px; color:rgba(234,240,255,.92); background:linear-gradient(180deg, rgba(110,231,255,.18), rgba(167,139,250,.18)); border:1px solid rgba(234,240,255,.16); box-shadow:0 10px 30px rgba(0,0,0,.25);}
+.mhTitle{display:block; font-size:18px; font-weight:800; margin-bottom:6px;}
+.mhDesc{margin:0; color:rgba(234,240,255,.76); line-height:1.55;}
+.mhBody{padding-top:2px;}
+.mhArrow{position:absolute; z-index:2; bottom:18px; width:38px; height:38px; border-radius:14px; border:1px solid rgba(234,240,255,.14); background:rgba(16,26,51,.55); color:rgba(234,240,255,.85); display:flex; align-items:center; justify-content:center; cursor:pointer; transition:transform .18s ease, background .18s ease, border-color .18s ease;}
+.mhArrow:hover{transform:translateY(-1px); background:rgba(16,26,51,.75); border-color:rgba(234,240,255,.22);}
+.mhPrev{left:18px;}
+.mhNext{right:18px;}
+.mhDots{position:absolute; z-index:2; left:50%; transform:translateX(-50%); bottom:28px; display:flex; gap:8px; align-items:center;}
+.mhDot{width:18px; height:6px; border-radius:999px; border:1px solid rgba(234,240,255,.12); background:rgba(234,240,255,.10); cursor:pointer; transition:width .22s ease, background .22s ease, border-color .22s ease, opacity .22s ease; opacity:.6;}
+.mhDot.isOn{width:28px; background:rgba(110,231,255,.55); border-color:rgba(110,231,255,.55); opacity:1;}
+@media (max-width: 920px){
+  .mhViewport{min-height:210px; padding:18px;}
+  .mhDeck{height:160px;}
+  .mhSlide{padding:16px; gap:14px;}
+  .mhNo{width:52px; height:52px; border-radius:16px;}
+  .mhTitle{font-size:17px;}
+  .mhDots{bottom:22px;}
+  .mhArrow{bottom:14px;}
+}
+</style>
 </head>
 
 <body>
@@ -1483,35 +1518,73 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
 
   <main class="wrap" id="top">
     <section class="hero">
-      <div class="card heroL">
+      <div class="card heroL main_header">
         <div class="kicker"><span class="dot"></span> 신속 · 정확 · 친절 상담</div>
         <h1><?= h($brandEn) ?>,<br />필요한 순간에 <span style="color:var(--accent)">빠르게</span> 안내드립니다.</h1>
         <p class="sub">
           이케쉬대부(ECASH)는 상담 신청 접수 후 담당자가 확인하여 연락드립니다.
           (※ 실제 조건은 심사/신용도/상품에 따라 달라질 수 있습니다.)
         </p>
-        <div class="bullets" aria-label="핵심 장점">
-          <div class="b">
-            <div>
-              <strong>간편 상담 신청</strong>
-              <span>기본 정보 입력으로 빠르게 접수</span>
-            </div>
+        
+        <div class="mhWrap" aria-label="핵심 장점 슬라이더">
+          <div class="mhBg" aria-hidden="true">
+            <div class="mhBgA"></div>
+            <div class="mhBgB"></div>
+            <div class="mhBgOverlay"></div>
           </div>
 
-          <div class="b">
-            <div>
-              <strong>개인정보 최소 수집</strong>
-              <span>입력 완료 후 동의 진행(증적 목적)</span>
+          <div class="mhViewport">
+            <div class="mhDeck">
+          <article class="mhSlide" data-bg="/cashhome_bg/hero-1.webp" aria-label="간편 심사">
+            <div class="mhNo">01</div>
+            <div class="mhBody">
+              <strong class="mhTitle">간편 심사</strong>
+              <p class="mhDesc">기본 정보 입력으로 빠르게 접수하고, 담당자가 확인 후 안내드립니다.</p>
             </div>
-          </div>
+          </article>
+          <article class="mhSlide" data-bg="/cashhome_bg/hero-2.webp" aria-label="안전한 개인정보 수집">
+            <div class="mhNo">02</div>
+            <div class="mhBody">
+              <strong class="mhTitle">안전한 개인정보 수집</strong>
+              <p class="mhDesc">필수 항목만 최소 수집하며, 입력 완료 후 동의 절차를 진행합니다.</p>
+            </div>
+          </article>
+          <article class="mhSlide" data-bg="/cashhome_bg/hero-3.webp" aria-label="투명한 고지">
+            <div class="mhNo">03</div>
+            <div class="mhBody">
+              <strong class="mhTitle">투명한 고지</strong>
+              <p class="mhDesc">필수 고지 사항을 명확히 안내하고, 절차를 단계별로 확인할 수 있습니다.</p>
+            </div>
+          </article>
+          <article class="mhSlide" data-bg="/cashhome_bg/hero-4.webp" aria-label="맞춤 상담">
+            <div class="mhNo">04</div>
+            <div class="mhBody">
+              <strong class="mhTitle">맞춤 상담</strong>
+              <p class="mhDesc">신용도/상품 조건에 따라 가능한 옵션을 정리해 드립니다.</p>
+            </div>
+          </article>
+          <article class="mhSlide" data-bg="/cashhome_bg/hero-5.webp" aria-label="빠른 회신">
+            <div class="mhNo">05</div>
+            <div class="mhBody">
+              <strong class="mhTitle">빠른 회신</strong>
+              <p class="mhDesc">접수 후 담당자가 확인하여 빠르게 연락드립니다.</p>
+            </div>
+          </article>
+            </div>
 
-          <div class="b">
-            <div>
-              <strong>투명한 고지</strong>
-              <span>필수 정보를 명확히 안내</span>
+            <button class="mhArrow mhPrev" type="button" aria-label="이전">
+              ‹
+            </button>
+            <button class="mhArrow mhNext" type="button" aria-label="다음">
+              ›
+            </button>
+
+            <div class="mhDots" role="tablist" aria-label="슬라이드 선택">
+              <button class="mhDot" type="button" aria-label="1번" data-idx="0"></button><button class="mhDot" type="button" aria-label="2번" data-idx="1"></button><button class="mhDot" type="button" aria-label="3번" data-idx="2"></button><button class="mhDot" type="button" aria-label="4번" data-idx="3"></button><button class="mhDot" type="button" aria-label="5번" data-idx="4"></button>
             </div>
           </div>
         </div>
+
         <div class="heroBtns">
           <a class="cta" href="#apply">상담 신청하기</a>
           <a class="btnGhost" href="#disclosure">필수 고지 확인</a>
@@ -2284,6 +2357,82 @@ index.php 스크립트 (전체)
       });
     }
   </script>
+<script>
+  (function(){
+    const root = document.querySelector('.main_header');
+    if(!root) return;
+
+    const slides = Array.from(root.querySelectorAll('.mhSlide'));
+    const dots = Array.from(root.querySelectorAll('.mhDot'));
+    const prevBtn = root.querySelector('.mhPrev');
+    const nextBtn = root.querySelector('.mhNext');
+    const bgA = root.querySelector('.mhBgA');
+    const bgB = root.querySelector('.mhBgB');
+    let bgToggle = false;
+
+    let idx = 0;
+    let timer = null;
+    const AUTOPLAY_MS = 3800;
+
+    function setBg(url){
+      const next = bgToggle ? bgA : bgB;
+      const cur  = bgToggle ? bgB : bgA;
+      bgToggle = !bgToggle;
+
+      next.style.backgroundImage = `url('${url}')`;
+      next.style.opacity = '1';
+      next.style.transform = 'scale(1.03)';
+
+      cur.style.opacity = '0';
+      cur.style.transform = 'scale(1.08)';
+    }
+
+    function render(nextIdx, dir){
+      const n = slides.length;
+      idx = (nextIdx + n) % n;
+
+      slides.forEach((el,i)=>{
+        el.classList.remove('isActive','isPrev','isNext');
+        if(i === idx) el.classList.add('isActive');
+        else if(i === (idx-1+n)%n) el.classList.add('isPrev');
+        else if(i === (idx+1)%n) el.classList.add('isNext');
+      });
+
+      dots.forEach((d,i)=> d.classList.toggle('isOn', i===idx));
+
+      const bg = slides[idx].getAttribute('data-bg');
+      if(bg) setBg(bg);
+    }
+
+    function go(step){
+      render(idx + step, step);
+      restart();
+    }
+
+    function restart(){
+      if(timer) clearInterval(timer);
+      timer = setInterval(()=> render(idx+1, 1), AUTOPLAY_MS);
+    }
+
+    // init
+    render(0, 1);
+    restart();
+
+    prevBtn && prevBtn.addEventListener('click', ()=>go(-1));
+    nextBtn && nextBtn.addEventListener('click', ()=>go(1));
+    dots.forEach(d=>{
+      d.addEventListener('click', ()=>{
+        const target = parseInt(d.getAttribute('data-idx')||'0',10);
+        render(target, target>idx ? 1 : -1);
+        restart();
+      });
+    });
+
+    // pause on hover (premium feel)
+    root.addEventListener('mouseenter', ()=> timer && clearInterval(timer));
+    root.addEventListener('mouseleave', ()=> restart());
+  })();
+</script>
 </body>
 
 </html>
