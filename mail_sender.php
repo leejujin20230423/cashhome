@@ -7,38 +7,63 @@ class MailSender
     private string $GMAIL_APP_PASSWORD;
     private string $MAIL_TO;
 
-    // public function __construct()
-    // {
-    //     $this->GMAIL_USER = getenv('GMAIL_USER') ?: 'ecashhome@gmail.com';
-    //     $this->GMAIL_APP_PASSWORD = getenv('GMAIL_APP_PASSWORD') ?: '';
-    //     $this->MAIL_TO = getenv('MAIL_TO') ?: $this->GMAIL_USER;
+    /**
+     * CLI/cron 환경에서도 .env 값을 읽을 수 있게 로드
+     * - 이미 설정된 환경변수/$_ENV 값은 덮어쓰지 않음
+     */
+    private function loadDotEnv(): void
+    {
+        $path = __DIR__ . '/.env';
+        if (!is_file($path) || !is_readable($path)) return;
 
-    //     if ($this->GMAIL_APP_PASSWORD === '') {
-    //         error_log('[mail_sender] Missing env: GMAIL_APP_PASSWORD (SMTP will be skipped, mail() fallback only)');
-    //     }
-    // }
+        // .env가 key=value 형태면 parse_ini_file로 안정적으로 로드 가능
+        $vars = @parse_ini_file($path, false, INI_SCANNER_RAW);
+        if (!is_array($vars)) return;
+
+        foreach ($vars as $k => $v) {
+            $k = trim((string)$k);
+            if ($k === '') continue;
+
+            // parse_ini_file은 따옴표를 포함해서 주는 경우가 있어 trim 처리
+            $val = is_string($v) ? trim($v) : (string)$v;
+
+            // 이미 설정된 값이 있으면 덮어쓰지 않음
+            if (array_key_exists($k, $_ENV)) continue;
+            if (getenv($k) !== false) continue;
+
+            $_ENV[$k] = $val;
+            putenv($k . '=' . $val);
+        }
+    }
+
+    /**
+     * getenv()는 값이 없으면 false를 반환하므로 string으로 안전 변환
+     */
+    private function envString(string $key, string $default = ''): string
+    {
+        $v = $_ENV[$key] ?? null;
+        if (is_string($v) && $v !== '') return $v;
+
+        $g = getenv($key);
+        if ($g === false || $g === '') return $default;
+
+        return (string)$g;
+    }
 
     public function __construct()
-{
-    $this->GMAIL_USER =
-        $_ENV['GMAIL_USER'] ??
-        getenv('GMAIL_USER') ??
-        'ecashhome@gmail.com';
+    {
+        // ✅ cron/CLI에서도 .env 읽도록
+        $this->loadDotEnv();
 
-    $this->GMAIL_APP_PASSWORD =
-        $_ENV['GMAIL_APP_PASSWORD'] ??
-        getenv('GMAIL_APP_PASSWORD') ??
-        '';
+        // ✅ getenv(false) 타입 에러 방지
+        $this->GMAIL_USER = $this->envString('GMAIL_USER', 'ecashhome@gmail.com');
+        $this->GMAIL_APP_PASSWORD = $this->envString('GMAIL_APP_PASSWORD', '');
+        $this->MAIL_TO = $this->envString('MAIL_TO', $this->GMAIL_USER);
 
-    $this->MAIL_TO =
-        $_ENV['MAIL_TO'] ??
-        getenv('MAIL_TO') ??
-        $this->GMAIL_USER;
-
-    if ($this->GMAIL_APP_PASSWORD === '') {
-        error_log('[mail_sender] Missing env: GMAIL_APP_PASSWORD');
+        if ($this->GMAIL_APP_PASSWORD === '') {
+            error_log('[mail_sender] Missing env: GMAIL_APP_PASSWORD');
+        }
     }
-}
 
     private function encodeHeaderUtf8(string $s): string
     {
