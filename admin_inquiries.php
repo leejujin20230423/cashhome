@@ -903,7 +903,7 @@ function send_inquiry_change_mail(PDO $pdo, array $before, array $after, string 
         return number_format((int)$n);
     };
 
-        // 제목: ID 제외, NO(접수번호) + 변경내용 포함
+    // 제목: ID 제외, NO(접수번호) + 변경내용 포함
     $noDisplay = $loanNo4 !== '' ? $loanNo4 : $loanNoTrim;
 
     $changeParts = [];
@@ -1741,13 +1741,13 @@ function build_report_mail_body(PDO $pdo): array
             $i++;
             $bg = ($i % 2 === 0) ? 'background:#fafafa;' : '';
             $no4 = $h($loanNo4($r));
-$created = $h((string)($r['cashhome_1000_created_at'] ?? ''));
+            $created = $h((string)($r['cashhome_1000_created_at'] ?? ''));
             $name = $h((string)($r['cashhome_1000_customer_name'] ?? ''));
             $phone = $h((string)($r['cashhome_1000_customer_phone'] ?? ''));
             $amt  = $h($fmtAmt($r['cashhome_1000_loan_amount'] ?? ''));
             $st = $h(status_label((string)($r['cashhome_1000_status'] ?? ST_NEW)));
             $oc = $h(outcome_label((string)normalize_outcome_legacy((string)($r['cashhome_1000_outcome'] ?? OC_PENDING))));
-$html .= '<tr style="' . $bg . '">'
+            $html .= '<tr style="' . $bg . '">'
                 . '<td align="center" style="' . $tdStyle . '">' . $i . '</td>'
                 . '<td style="' . $tdStyle . '">' . $no4 . '</td>'
                 . '<td style="' . $tdStyle . '">' . $created . '</td>'
@@ -1756,7 +1756,7 @@ $html .= '<tr style="' . $bg . '">'
                 . '<td align="right" style="' . $tdStyle . '">' . $amt . '</td>'
                 . '<td style="' . $tdStyle . '">' . $st . '</td>'
                 . '<td style="' . $tdStyle . '">' . $oc . '</td>'
-                
+
                 . '</tr>';
         }
 
@@ -1927,7 +1927,6 @@ $html .= '<tr style="' . $bg . '">'
         . "4.승인 총건수: {$cntApproved}\n";
 
     return [$subject, $html, $plain];
-
 }
 
 
@@ -3620,19 +3619,20 @@ function admin_name_by_id(int $id): string
                             </div>
 
                             <div class="saveBar">
-                                    <button class="btn primary" id="saveBtn" type="button">저장</button>
-                                    <button class="btn primary" id="reportBtn" type="button">최근 3개월간 통계보기</button>
-                                    <button class="btn" id="backToListBtn" type="button">목록</button>
+                                <button class="btn primary" id="saveBtn" type="button">저장</button>
 
-                                    <span class="sideMeta" id="lastSaveMeta">
-                                        마지막 저장: <b id="lastSaveBy" data-by="<?= h((string)$lastBy) ?>"><?= h((string)$lastByLabel) ?></b>
-                                        · <b id="lastSaveAt"><?= $lastAt !== '' ? h($lastAt) : '—' ?></b>
-                                    </span>
+                                <button class="btn" id="backToListBtn" type="button">목록</button>
 
-                                    <span class="hint" id="saveHint">
-                                        <?= $lockClosedForRole ? '※ 종결된 건(admin)은 처리상태/대출결과 변경이 불가합니다. 메모 저장은 가능합니다.' : '※ 변경 후 저장 버튼을 눌러야 DB에 반영됩니다.' ?>
-                                    </span>
-                                </div>
+                                <span class="sideMeta" id="lastSaveMeta">
+                                    마지막 저장: <b id="lastSaveBy" data-by="<?= h((string)$lastBy) ?>"><?= h((string)$lastByLabel) ?></b>
+                                    · <b id="lastSaveAt"><?= $lastAt !== '' ? h($lastAt) : '—' ?></b>
+                                </span>
+
+                                <span class="hint" id="saveHint">
+                                    <?= $lockClosedForRole ? '※ 종결된 건(admin)은 처리상태/대출결과 변경이 불가합니다. 메모 저장은 가능합니다.' : '※ 변경 후 저장 버튼을 눌러야 DB에 반영됩니다.' ?>
+                                </span>
+                                <button class="btn primary" id="reportBtn" type="button">최근 3개월간 통계보기</button>
+                            </div>
                         </div>
 
                         <!-- 탭: 토큰발급 -->
@@ -3749,14 +3749,22 @@ function admin_name_by_id(int $id): string
                                                         <div><?= h((string)($d['cashhome_1200_created_at'] ?? '')) ?></div>
 
                                                         <div class="docBtns">
-                                                            <!-- ✅ 크게보기 버튼 -->
+                                                            <!-- 크게보기 -->
                                                             <button type="button" class="miniBtn" data-doc-open>🔍 크게보기</button>
 
-                                                            <!-- (선택) 원본 새창 -->
+                                                            <!-- 새창 -->
                                                             <a class="miniBtn" href="<?= h($imgUrl) ?>" target="_blank" rel="noopener">↗ 새창</a>
 
-                                                            <!-- ✅ 종결이면 삭제 버튼을 HTML에서 숨기고, 서버에서도 막음(PHP파트에서) -->
-                                                            <button type="button" class="miniBtn" data-doc-delete <?= $lockClosedForRole ? 'disabled' : '' ?> data-doc-id="<?= h((string)$docId) ?>">🗑 삭제</button>
+                                                            <!-- ✅ master일 때만 삭제 버튼 표시 -->
+                                                            <?php if ($loginRole === 'master'): ?>
+                                                                <button
+                                                                    type="button"
+                                                                    class="miniBtn"
+                                                                    data-doc-delete
+                                                                    data-doc-id="<?= h((string)$docId) ?>">
+                                                                    🗑 삭제
+                                                                </button>
+                                                            <?php endif; ?>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -4260,8 +4268,8 @@ function admin_name_by_id(int $id): string
 
                     const docsHtml =
                         (docsCount > 0 ?
-                        `<span class="docs count">서류 <span class="n">${docsCount}</span><span class="u">개</span></span>` :
-                        `<span class="docs none">서류없음</span>`) + loanAmtHtml;
+                            `<span class="docs count">서류 <span class="n">${docsCount}</span><span class="u">개</span></span>` :
+                            `<span class="docs none">서류없음</span>`) + loanAmtHtml;
 
                     const seq = Number(r.seq || idx + 1);
                     const phone = String(r.phone || "");
@@ -4975,7 +4983,7 @@ function admin_name_by_id(int $id): string
 
           <div class="saveBar">
             <button class="btn primary" id="saveBtn" type="button">저장</button>
-            <button class="btn primary" id="reportBtn" type="button">최근 3개월간 통계보기</button>
+            
             <button class="btn" id="backToListBtn" type="button">목록</button>
 
             <span class="sideMeta" id="lastSaveMeta">
@@ -4984,6 +4992,7 @@ function admin_name_by_id(int $id): string
             </span>
 
             <span class="hint" id="saveHint">${locked ? "※ 종결된 건(admin)은 처리상태/대출결과 변경이 불가합니다. 메모 저장은 가능합니다." : "※ 변경 후 저장 버튼을 눌러야 DB에 반영됩니다."}</span>
+            <button class="btn primary" id="reportBtn" type="button">최근 3개월간 통계보기</button>
           </div>
         </div>
 
@@ -5153,14 +5162,29 @@ function admin_name_by_id(int $id): string
                 <img class="thumb" src="${escapeHtml(url)}" alt="${escapeHtml(fn)}" loading="lazy" />
               </button>
               <div class="docMeta">
-                <div class="fn">${escapeHtml(fn)}</div>
-                <div>${escapeHtml(created)}</div>
-                <div class="docBtns">
-                  <button type="button" class="miniBtn" data-doc-open>🔍 크게보기</button>
-                  <a class="miniBtn" href="${escapeHtml(url)}" target="_blank" rel="noopener">↗ 새창</a>
-                  <button type="button" class="miniBtn" data-doc-delete data-doc-id="${docId}">🗑 삭제</button>
-                </div>
-              </div>
+    <div class="fn"><?= h($fn) ?></div>
+    <div><?= h((string)($d['cashhome_1200_created_at'] ?? '')) ?></div>
+
+    <div class="docBtns">
+        <!-- 크게보기 -->
+        <button type="button" class="miniBtn" data-doc-open>🔍 크게보기</button>
+
+        <!-- 새창 -->
+        <a class="miniBtn" href="<?= h($imgUrl) ?>" target="_blank" rel="noopener">↗ 새창</a>
+
+        <!-- ✅ master일 때만 삭제 버튼 표시 -->
+        <?php if ($loginRole === 'master'): ?>
+            <button 
+                type="button" 
+                class="miniBtn" 
+                data-doc-delete 
+                data-doc-id="<?= h((string)$docId) ?>"
+            >
+                🗑 삭제
+            </button>
+        <?php endif; ?>
+    </div>
+</div>
             </div>
           `;
                     }
@@ -5233,7 +5257,7 @@ function admin_name_by_id(int $id): string
                 }
             }
 
-            
+
             async function sendThreeMonthReport() {
                 const csrf = document.getElementById("csrf_token")?.value || "";
                 if (!csrf) {
@@ -5276,7 +5300,7 @@ function admin_name_by_id(int $id): string
                 }
             }
 
-// ====== refresh ======
+            // ====== refresh ======
 
             let debounceTimer = null;
 
