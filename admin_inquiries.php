@@ -4912,7 +4912,10 @@ function admin_name_by_id(int $id): string
                 const lastByLabel = String(sel.last_modified_by_label ?? "—");
                 const lastAt = String(sel.cashhome_1000_last_modified_at || "");
 
-                const docsHtml = buildDocsHtml(docs || {});
+                // ✅ 서류 삭제 버튼 노출 정책
+                // - admin: 버튼 자체 없음
+                // - master: 종결 여부와 무관하게 삭제 버튼 노출(서버단에서도 권한/종결 정책 2중 방어)
+                const docsHtml = buildDocsHtml(docs || {}, role, locked);
 
                 box.innerHTML = `
         <h3 class="detailTitle">접수 정보</h3>
