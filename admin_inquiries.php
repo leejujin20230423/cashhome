@@ -3756,7 +3756,8 @@ function admin_name_by_id(int $id): string
                                                             <a class="miniBtn" href="<?= h($imgUrl) ?>" target="_blank" rel="noopener">↗ 새창</a>
 
                                                             <!-- ✅ master일 때만 삭제 버튼 표시 -->
-                                                            <?php if ($loginRole === 'master'): ?>
+                                                            <!-- ✅ master일 때만 삭제 버튼 표시 -->
+                                                            <?php if (($currentAdminRole ?? '') === 'master'): ?>
                                                                 <button
                                                                     type="button"
                                                                     class="miniBtn"
@@ -5133,7 +5134,11 @@ function admin_name_by_id(int $id): string
                 return "기타";
             }
 
-            function buildDocsHtml(docs) {
+            function buildDocsHtml(docs, role, locked) {
+                const r = String(role || "").toLowerCase().trim();
+                const canDelete = (r === "master") && !locked;
+                // 정책: admin은 버튼 자체 없음, master는 종결이어도 삭제 가능(locked=false)
+
                 if (!docs || Object.keys(docs).length === 0) {
                     return `<div style="color:var(--muted);font-size:12px;">등록된 서류가 없습니다.</div>`;
                 }
@@ -5141,14 +5146,15 @@ function admin_name_by_id(int $id): string
                 let html = "";
                 for (const [dtype, items] of Object.entries(docs)) {
                     const title = docTypeLabel(dtype);
+
                     html += `
-          <div class="docGroup">
-            <div class="docGroupHead">
-              <b>${escapeHtml(title)}</b>
-              <span class="hint">총 ${items.length}개</span>
-            </div>
-            <div class="docGrid">
-        `;
+      <div class="docGroup">
+        <div class="docGroupHead">
+          <b>${escapeHtml(title)}</b>
+          <span class="hint">총 ${items.length}개</span>
+        </div>
+        <div class="docGrid">
+    `;
 
                     for (const d of items) {
                         const docId = Number(d.cashhome_1200_id || 0);
@@ -5157,40 +5163,33 @@ function admin_name_by_id(int $id): string
                         const url = `document_view.php?id=${docId}`;
 
                         html += `
-            <div class="docItem" data-doc-id="${docId}" data-doc-url="${escapeHtml(url)}" data-doc-name="${escapeHtml(fn)}">
-              <button type="button" class="thumbBtn" data-doc-open>
-                <img class="thumb" src="${escapeHtml(url)}" alt="${escapeHtml(fn)}" loading="lazy" />
-              </button>
-              <div class="docMeta">
-    <div class="fn"><?= h($fn) ?></div>
-    <div><?= h((string)($d['cashhome_1200_created_at'] ?? '')) ?></div>
+        <div class="docItem" data-doc-id="${docId}" data-doc-url="${escapeHtml(url)}" data-doc-name="${escapeHtml(fn)}">
+          <button type="button" class="thumbBtn" data-doc-open>
+            <img class="thumb" src="${escapeHtml(url)}" alt="${escapeHtml(fn)}" loading="lazy" />
+          </button>
 
-    <div class="docBtns">
-        <!-- 크게보기 -->
-        <button type="button" class="miniBtn" data-doc-open>🔍 크게보기</button>
+          <div class="docMeta">
+            <div class="fn">${escapeHtml(fn)}</div>
+            <div>${escapeHtml(created)}</div>
 
-        <!-- 새창 -->
-        <a class="miniBtn" href="<?= h($imgUrl) ?>" target="_blank" rel="noopener">↗ 새창</a>
+            <div class="docBtns">
+              <button type="button" class="miniBtn" data-doc-open>🔍 크게보기</button>
+              <a class="miniBtn" href="${escapeHtml(url)}" target="_blank" rel="noopener">↗ 새창</a>
 
-        <!-- ✅ master일 때만 삭제 버튼 표시 -->
-        <?php if ($loginRole === 'master'): ?>
-            <button 
-                type="button" 
-                class="miniBtn" 
-                data-doc-delete 
-                data-doc-id="<?= h((string)$docId) ?>"
-            >
-                🗑 삭제
-            </button>
-        <?php endif; ?>
-    </div>
-</div>
+              ${
+                canDelete
+                  ? `<button type="button" class="miniBtn" data-doc-delete data-doc-id="${docId}">🗑 삭제</button>`
+                  : ``
+              }
             </div>
-          `;
+          </div>
+        </div>
+      `;
                     }
 
                     html += `</div></div>`;
                 }
+
                 return html;
             }
 
