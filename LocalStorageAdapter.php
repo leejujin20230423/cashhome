@@ -1,7 +1,11 @@
 <?php
 declare(strict_types=1);
 
-final class LocalStorageAdapter
+namespace Cashhome\Storage;
+
+require_once __DIR__ . '/StorageAdapterInterface.php';
+
+final class LocalStorageAdapter implements StorageAdapterInterface
 {
     private string $baseDir;
     private string $publicBaseUrl;
@@ -13,63 +17,82 @@ final class LocalStorageAdapter
     }
 
     /**
-     * 업로드된 파일을 저장하고 public URL을 리턴
-     *
-     * @param array $file  $_FILES에서 꺼낸 1개 파일 배열 (name,type,tmp_name,error,size)
-     * @param string $relativeDir 예: '16/id_card' 같은 서브폴더 (없으면 '' 가능)
-     * @param string $saveName 저장 파일명(확장자 포함) (없으면 자동 생성)
-     * @return array ['path' => 'uploads/..', 'url' => 'https://..', 'size' => int]
+     * StorageAdapterInterface 구현
+     * @param string $relativePath 예: docs/123/abcdef.jpg
+     * @param string $binary 파일 바이너리
+     * @param string $mime mime type (로컬 저장에서는 주로 참고용)
+     * @return string 실제 저장된 relativePath
+     */
+    public function put(string $relativePath, string $binary, string $mime): string
+    {
+        $relativePath = ltrim($relativePath, '/');
+        $relativePath = str_replace(['..\\', '../', '\\'], ['', '', '/'], $relativePath);
+
+        $dest = $this->baseDir . '/' . $relativePath;
+        $dir = dirname($dest);
+
+        if (!is_dir($dir)) {
+            if (!@mkdir($dir, 0775, true) && !is_dir($dir)) {
+                throw new \RuntimeException('업로드 폴더 생성 실패: ' . $dir);
+            }
+        }
+        if (!is_writable($dir)) {
+            $perms = @fileperms($dir);
+            throw new \RuntimeException(
+                '업로드 폴더 쓰기 불가: ' . $dir . ' perms=' . ($perms ? substr(sprintf('%o', $perms), -4) : 'unknown')
+            );
+        }
+
+        $bytes = @file_put_contents($dest, $binary);
+        if ($bytes === false) {
+            $last = error_get_last();
+            throw new \RuntimeException('파일 저장 실패: ' . ($last['message'] ?? 'unknown'));
+        }
+
+        @chmod($dest, 0664);
+
+        return $relativePath;
+    }
+
+    /**
+     * StorageAdapterInterface 구현
+     */
+    public function publicUrl(string $relativePath): string
+    {
+        $relativePath = ltrim($relativePath, '/');
+        return $this->publicBaseUrl . '/' . $relativePath;
+    }
+
+    /**
+     * (옵션) 기존 코드 호환용: $_FILES 한 건을 받아 저장하고 URL 등 반환
+     * DocumentUploader에서는 안 쓰지만, 필요하면 유지 가능
      */
     public function saveUploadedFile(array $file, string $relativeDir = '', string $saveName = ''): array
     {
         $tmp = (string)($file['tmp_name'] ?? '');
         if ($tmp === '' || !is_uploaded_file($tmp)) {
-            throw new RuntimeException('업로드 임시파일이 유효하지 않습니다.');
+            throw new \RuntimeException('업로드 임시파일이 유효하지 않습니다.');
         }
 
-        // 디렉토리 준비
         $relativeDir = trim($relativeDir, '/');
-        $targetDir = $this->baseDir . ($relativeDir !== '' ? '/' . $relativeDir : '');
 
-        if (!is_dir($targetDir)) {
-            if (!@mkdir($targetDir, 0775, true) && !is_dir($targetDir)) {
-                throw new RuntimeException('업로드 폴더 생성 실패: ' . $targetDir);
-            }
-        }
-        if (!is_writable($targetDir)) {
-            $perms = @fileperms($targetDir);
-            throw new RuntimeException('업로드 폴더 쓰기 불가: ' . $targetDir . ' perms=' . ($perms ? substr(sprintf('%o', $perms), -4) : 'unknown'));
-        }
-
-        // 파일명 생성
         if ($saveName === '') {
             $ext = $this->guessExt((string)($file['name'] ?? ''), (string)($file['type'] ?? ''));
             $saveName = 'doc_' . date('Ymd_His') . '_' . bin2hex(random_bytes(6)) . $ext;
         } else {
-            // 파일명 안전화
             $saveName = preg_replace('/[^a-zA-Z0-9._-]/', '_', $saveName) ?? $saveName;
         }
 
-        $dest = $targetDir . '/' . $saveName;
+        $binary = (string)file_get_contents($tmp);
 
-        // ✅ 핵심: rename() 말고 move_uploaded_file() 사용
-        if (!@move_uploaded_file($tmp, $dest)) {
-            // move 실패 시 copy fallback (서버마다 move가 막히는 경우 대비)
-            $copied = @copy($tmp, $dest);
-            if (!$copied) {
-                $last = error_get_last();
-                throw new RuntimeException('파일 저장 실패: ' . ($last['message'] ?? 'unknown'));
-            }
-        }
+        $relativePath = ($relativeDir !== '' ? $relativeDir . '/' : '') . $saveName;
+        $savedPath = $this->put($relativePath, $binary, (string)($file['type'] ?? 'application/octet-stream'));
 
-        @chmod($dest, 0664);
-
-        $publicPath = 'uploads' . ($relativeDir !== '' ? '/' . $relativeDir : '') . '/' . $saveName;
-        $url = $this->publicBaseUrl . '/' . ($relativeDir !== '' ? $relativeDir . '/' : '') . $saveName;
+        $dest = $this->baseDir . '/' . $savedPath;
 
         return [
-            'path' => $publicPath,
-            'url'  => $url,
+            'path' => 'uploads/' . $savedPath,
+            'url'  => $this->publicUrl($savedPath),
             'size' => (int)filesize($dest),
         ];
     }
@@ -79,7 +102,6 @@ final class LocalStorageAdapter
         $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
         if ($ext !== '') return '.' . $ext;
 
-        // mime 기반 fallback
         return match ($mime) {
             'image/jpeg' => '.jpg',
             'image/png'  => '.png',
