@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+namespace Cashhome\Storage;
+
 require_once __DIR__ . '/StorageAdapterInterface.php';
 
 final class LocalStorageAdapter implements StorageAdapterInterface
