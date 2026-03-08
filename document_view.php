@@ -109,6 +109,8 @@ try {
     }
 
     // inline 보기(이미지면 브라우저에 표시됨)
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
     header('Content-Type: ' . $mime);
     header('X-Content-Type-Options: nosniff');
 

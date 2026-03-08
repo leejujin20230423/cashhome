@@ -4113,7 +4113,8 @@ function admin_name_by_id(int $id): string
                                                 $docId = (int)$d['cashhome_1200_id'];
                                                 $fn = (string)($d['cashhome_1200_original_name'] ?? '');
                                                 if ($fn === '') $fn = 'image_' . $docId;
-                                                $imgUrl = 'document_view.php?id=' . $docId;
+                                                $ver = (string)($d['cashhome_1200_created_at'] ?? '');
+                                                $imgUrl = 'document_view.php?id=' . $docId . ($ver !== '' ? ('&v=' . rawurlencode($ver)) : '');
                                                 ?>
                                                 <div class="docItem" data-doc-id="<?= h((string)$docId) ?>" data-doc-url="<?= h($imgUrl) ?>" data-doc-name="<?= h($fn) ?>">
                                                     <!-- ✅ 이미지 클릭해도 크게보기(모달은 script에서) -->
@@ -5705,7 +5706,10 @@ function admin_name_by_id(int $id): string
                         const docId = Number(d.cashhome_1200_id || 0);
                         const fn = (d.cashhome_1200_original_name || "") ? d.cashhome_1200_original_name : ("image_" + docId);
                         const created = d.cashhome_1200_created_at || "";
-                        const url = `document_view.php?id=${docId}`;
+                        const createdVer = encodeURIComponent(String(d.cashhome_1200_created_at || ""));
+                        const url = createdVer ?
+                            `document_view.php?id=${docId}&v=${createdVer}` :
+                            `document_view.php?id=${docId}`;
 
                         html += `
         <div class="docItem" data-doc-id="${docId}" data-doc-url="${escapeHtml(url)}" data-doc-name="${escapeHtml(fn)}">
