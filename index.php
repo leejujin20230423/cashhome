@@ -2113,8 +2113,45 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
             <div class="row">
               <div>
                 <label for="bank_name">은행명 (필수)</label>
-                <input id="bank_name" name="bank_name" type="text" inputmode="text" placeholder="예: 국민은행" required
-                  value="<?= h($old['bank_name']) ?>" />
+                <?php
+                $bankOptions = [
+                  '국민은행',
+                  '신한은행',
+                  '우리은행',
+                  '하나은행',
+                  '농협은행',
+                  '기업은행',
+                  '수협은행',
+                  'SC제일은행',
+                  '씨티은행',
+                  '산업은행',
+                  '우체국',
+                  '새마을금고',
+                  '신협',
+                  '카카오뱅크',
+                  '케이뱅크',
+                  '토스뱅크',
+                  '부산은행',
+                  '대구은행',
+                  '광주은행',
+                  '전북은행',
+                  '경남은행',
+                  '제주은행',
+                ];
+                ?>
+                <select id="bank_name" name="bank_name" required>
+                  <option value="">은행을 선택해주세요</option>
+                  <?php foreach ($bankOptions as $b): ?>
+                    <option value="<?= h($b) ?>" <?= ((string)$old['bank_name'] === $b) ? 'selected' : '' ?>>
+                      <?= h($b) ?>
+                    </option>
+                  <?php endforeach; ?>
+                  <?php if ((string)$old['bank_name'] !== '' && !in_array((string)$old['bank_name'], $bankOptions, true)): ?>
+                    <option value="<?= h((string)$old['bank_name']) ?>" selected>
+                      <?= h((string)$old['bank_name']) ?> (기존값)
+                    </option>
+                  <?php endif; ?>
+                </select>
               </div>
               <div>
                 <label for="bank_account_holder">예금주 (필수)</label>
@@ -2127,7 +2164,7 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
               <label for="bank_account_no">입금 계좌번호 (필수)</label>
               <input id="bank_account_no" name="bank_account_no" type="text" inputmode="numeric" placeholder="숫자만 입력 (예: 12345678901234)" required
                 value="<?= h($old['bank_account_no']) ?>" />
-              <div class="tiny" style="margin-top:6px;">※ 숫자만 입력해주세요. (하이픈/공백 제외)</div>
+              <div class="tiny" style="margin-top:6px;">※ 숫자만 입력하면 선택한 은행 형식으로 하이픈이 자동 입력됩니다.</div>
             </div>
 
             <div class="row">
@@ -2402,14 +2439,66 @@ index.php 스크립트 (전체)
       onInput();
     })();
 
-    // 계좌번호 숫자만 허용
+    // 계좌번호 은행별 하이픈 자동 포맷
     (function() {
+      const bankEl = document.getElementById('bank_name');
       const bankNoEl = document.getElementById('bank_account_no');
-      if (!bankNoEl) return;
-      const onInput = () => {
-        const cleaned = (bankNoEl.value || '').replace(/\D+/g, '').slice(0, 20);
-        if (bankNoEl.value !== cleaned) bankNoEl.value = cleaned;
+      if (!bankEl || !bankNoEl) return;
+
+      const BANK_PATTERNS = {
+        '국민은행': [3, 2, 6],
+        '신한은행': [3, 2, 6],
+        '우리은행': [4, 3, 6],
+        '하나은행': [3, 6, 5],
+        '농협은행': [3, 4, 4, 2],
+        '기업은행': [3, 6, 2, 3],
+        '수협은행': [3, 2, 6],
+        'SC제일은행': [3, 2, 6],
+        '씨티은행': [3, 6, 3],
+        '산업은행': [3, 2, 6],
+        '우체국': [3, 6, 5],
+        '새마을금고': [4, 4, 4],
+        '신협': [3, 3, 6],
+        '카카오뱅크': [4, 2, 7],
+        '케이뱅크': [3, 3, 6],
+        '토스뱅크': [3, 3, 6],
+        '부산은행': [3, 4, 4, 2],
+        '대구은행': [3, 4, 4, 2],
+        '광주은행': [3, 4, 4, 2],
+        '전북은행': [3, 4, 4, 2],
+        '경남은행': [3, 4, 4, 2],
+        '제주은행': [3, 2, 6],
       };
+
+      function formatByPattern(digits, pattern) {
+        let idx = 0;
+        const parts = [];
+        for (const size of pattern) {
+          if (idx >= digits.length) break;
+          const piece = digits.slice(idx, idx + size);
+          if (!piece) break;
+          parts.push(piece);
+          idx += piece.length;
+        }
+        if (idx < digits.length) {
+          parts.push(digits.slice(idx));
+        }
+        return parts.join('-');
+      }
+
+      function currentPattern() {
+        return BANK_PATTERNS[String(bankEl.value || '').trim()] || [3, 3, 6, 6];
+      }
+
+      const onInput = () => {
+        const digits = (bankNoEl.value || '').replace(/\D+/g, '').slice(0, 20);
+        const formatted = formatByPattern(digits, currentPattern());
+        if (bankNoEl.value !== formatted) bankNoEl.value = formatted;
+      };
+
+      bankEl.addEventListener('change', onInput, {
+        passive: true
+      });
       bankNoEl.addEventListener('input', onInput, {
         passive: true
       });
