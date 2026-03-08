@@ -174,7 +174,8 @@ try {
             respond(false, '임시 업로드 파일이 유효하지 않습니다.', ['index' => $i], 400);
         }
 
-        $saved[] = $uploader->handleUploadedFile($inquiryId, $file, 'admin_extra', $sort++);
+        // DB enum 제약: cashhome_1200_doc_type 는 etc 포함 6종만 허용됨
+        $saved[] = $uploader->handleUploadedFile($inquiryId, $file, 'etc', $sort++);
     }
 
     $_SESSION['csrf_token_admin_upload'] = bin2hex(random_bytes(32));
@@ -191,4 +192,3 @@ try {
         'where' => $e->getFile() . ':' . $e->getLine(),
     ], 500);
 }
-

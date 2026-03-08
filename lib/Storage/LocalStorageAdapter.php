@@ -19,12 +19,12 @@ final class LocalStorageAdapter implements StorageAdapterInterface
         $dir = dirname($fullPath);
         if (!is_dir($dir)) {
             if (!@mkdir($dir, 0775, true) && !is_dir($dir)) {
-                throw new RuntimeException('업로드 디렉토리 생성 실패');
+                throw new \RuntimeException('업로드 디렉토리 생성 실패');
             }
         }
 
         if (file_put_contents($fullPath, $binary, LOCK_EX) === false) {
-            throw new RuntimeException('파일 저장 실패');
+            throw new \RuntimeException('파일 저장 실패');
         }
 
         return $relativePath;

@@ -179,7 +179,9 @@ $csrf = (string)$_SESSION['csrf_token_admin_upload'];
       const res = await fetch('admin_upload_document.php', { method: 'POST', body: fd, credentials: 'same-origin' });
       const data = await res.json().catch(() => null);
       if (!data || !data.ok) {
-        throw new Error((data && data.message) ? data.message : '업로드 실패');
+        const baseMsg = (data && data.message) ? data.message : '업로드 실패';
+        const realErr = (data && data.data && data.data.real_error) ? String(data.data.real_error) : '';
+        throw new Error(realErr ? `${baseMsg} / 원인: ${realErr}` : baseMsg);
       }
       setMsg('업로드 완료! 리스트로 이동합니다...');
       setTimeout(() => {
