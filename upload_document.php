@@ -161,11 +161,11 @@ try {
     $basePath = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
     $publicBaseUrl = $scheme . $host . ($basePath ? $basePath : '') . '/uploads';
 
-    $storage = new LocalStorageAdapter(
+    $storage = new \Cashhome\Storage\LocalStorageAdapter(
         baseDir: __DIR__ . '/uploads',
         publicBaseUrl: $publicBaseUrl
     );
-    $uploader = new DocumentUploader($pdo, $storage);
+    $uploader = new \Cashhome\DocumentUploader($pdo, $storage);
 
     $saved = [];
 
