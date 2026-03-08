@@ -183,7 +183,7 @@ $csrf = (string)$_SESSION['csrf_token_admin_upload'];
       }
       setMsg('업로드 완료! 리스트로 이동합니다...');
       setTimeout(() => {
-        location.href = '/';
+        location.href = `admin_inquiries.php?id=${inquiryId}`;
       }, 400);
     } catch (e) {
       console.error(e);

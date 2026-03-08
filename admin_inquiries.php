@@ -271,6 +271,7 @@ function doc_type_label(string $t): string
         'income_proof' => '소득증빙',
         'business_license' => '사업자등록증',
         'admin_extra' => '관리자 추가 서류',
+        'admin_upload' => '관리자 추가 서류',
         default => '기타',
     };
 }
@@ -342,11 +343,9 @@ function delete_doc(PDO $pdo, int $docId, ?string $role = null): bool
 {
     if ($docId <= 0) return false;
 
-    // ✅ 종결 잠금 규칙
-    // - admin: 종결이면 삭제 금지
-    // - master: 종결이어도 삭제 허용
-    $stt = inquiry_status_by_doc_id($pdo, $docId);
-    if ($stt !== null && is_closed_status((string)$stt) && ($role === 'admin')) {
+    // ✅ 정책: 서류 삭제는 master만 가능
+    $roleNorm = strtolower(trim((string)$role));
+    if ($roleNorm !== 'master') {
         return false;
     }
 
@@ -1364,7 +1363,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
 
     $ok = delete_doc($pdo, $docId, $adminRole);
     if (!$ok) {
-        echo json_encode(['ok' => false, 'message' => '삭제에 실패했습니다. (종결건이거나 존재하지 않습니다)'], JSON_UNESCAPED_UNICODE);
+        echo json_encode(['ok' => false, 'message' => '삭제에 실패했습니다. (권한 없음 또는 문서 없음)'], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
@@ -3998,6 +3997,7 @@ function admin_name_by_id(int $id): string
                                 <button class="btn primary" id="saveBtn" type="button">저장</button>
 
                                 <button class="btn" id="backToListBtn" type="button">목록</button>
+                                <a class="btn" id="adminAddDocBtnTop" href="admin_document_upload.php?inquiry_id=<?= h((string)$selectedId) ?>" <?= $lockClosedForRole ? 'aria-disabled="true" style="pointer-events:none;opacity:.5"' : '' ?>>서류추가</a>
 
                                 <span class="sideMeta" id="lastSaveMeta">
                                     마지막 저장: <b id="lastSaveBy" data-by="<?= h((string)$lastBy) ?>"><?= h((string)$lastByLabel) ?></b>
@@ -5049,7 +5049,9 @@ function admin_name_by_id(int $id): string
 
             function setDetailLock(root, isClosed, role) {
                 const r = root || document;
-                const disabled = (!!isClosed && String(role || "").toLowerCase() === "admin");
+                const roleNorm = String(role || "").toLowerCase();
+                const isAdmin = roleNorm === "admin";
+                const disabled = (!!isClosed && isAdmin);
 
                 // 처리/메모
                 const s1 = r.querySelector("#edit_status");
@@ -5071,7 +5073,21 @@ function admin_name_by_id(int $id): string
 
                 // 서류 삭제 버튼
                 r.querySelectorAll("[data-doc-delete]").forEach((x) => {
-                    x.disabled = disabled;
+                    x.disabled = disabled || isAdmin;
+                });
+
+                // 서류추가 버튼(닫힘+admin이면 잠금)
+                r.querySelectorAll("#adminAddDocBtn, #adminAddDocBtnTop").forEach((x) => {
+                    if (!(x instanceof HTMLElement)) return;
+                    if (disabled) {
+                        x.setAttribute("aria-disabled", "true");
+                        x.style.pointerEvents = "none";
+                        x.style.opacity = ".5";
+                    } else {
+                        x.removeAttribute("aria-disabled");
+                        x.style.pointerEvents = "";
+                        x.style.opacity = "";
+                    }
                 });
 
                 const hint = r.querySelector("#saveHint");
@@ -5435,7 +5451,7 @@ function admin_name_by_id(int $id): string
                 const lastByLabel = String(sel.last_modified_by_label ?? "—");
                 const lastAt = String(sel.cashhome_1000_last_modified_at || "");
 
-                const docsHtml = buildDocsHtml(docs || {});
+                const docsHtml = buildDocsHtml(docs || {}, role, locked);
 
                 box.innerHTML = `
         <h3 class="detailTitle">접수 정보</h3>
@@ -5509,6 +5525,7 @@ function admin_name_by_id(int $id): string
             <button class="btn primary" id="saveBtn" type="button">저장</button>
             
             <button class="btn" id="backToListBtn" type="button">목록</button>
+            <a class="btn" id="adminAddDocBtnTop" href="admin_document_upload.php?inquiry_id=${selectedId}" ${locked ? "aria-disabled=\"true\" style=\"pointer-events:none;opacity:.5\"" : ""}>서류추가</a>
 
             <span class="sideMeta" id="lastSaveMeta">
               마지막 저장: <b id="lastSaveBy">${escapeHtml(lastByLabel || '—')}</b>
@@ -5658,13 +5675,14 @@ function admin_name_by_id(int $id): string
                 if (v === "bankbook") return "통장";
                 if (v === "income_proof") return "소득증빙";
                 if (v === "business_license") return "사업자등록증";
+                if (v === "admin_extra" || v === "admin_upload") return "관리자 추가 서류";
                 return "기타";
             }
 
             function buildDocsHtml(docs, role, locked) {
                 const r = String(role || "").toLowerCase().trim();
-                const canDelete = (r === "master") && !locked;
-                // 정책: admin은 버튼 자체 없음, master는 종결이어도 삭제 가능(locked=false)
+                const canDelete = (r === "master");
+                // 정책: admin은 버튼 자체 없음, master만 삭제 버튼 표시
 
                 if (!docs || Object.keys(docs).length === 0) {
                     return `<div style="color:var(--muted);font-size:12px;">등록된 서류가 없습니다.</div>`;

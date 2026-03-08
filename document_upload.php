@@ -610,7 +610,9 @@ if ($inquiryId > 0) {
                                 status: res.status,
                                 data
                             });
-                            alert((data && data.message) ? data.message : '업로드에 실패했습니다.');
+                            const baseMsg = (data && data.message) ? data.message : '업로드에 실패했습니다.';
+                            const realErr = data && data.data && data.data.real_error ? String(data.data.real_error) : '';
+                            alert(realErr ? `${baseMsg}\n원인: ${realErr}` : baseMsg);
                             return;
                         }
 
