@@ -171,6 +171,10 @@ function validate_inquiry_input(array $in): array
   $amount = trim((string)($in['amount'] ?? ''));
   $purpose = trim((string)($in['purpose'] ?? ''));
   $memo = trim((string)($in['memo'] ?? ''));
+  $bankName = trim((string)($in['bank_name'] ?? ''));
+  $bankAccountHolder = trim((string)($in['bank_account_holder'] ?? ''));
+  $bankAccountNoRaw = trim((string)($in['bank_account_no'] ?? ''));
+  $bankAccountNo = preg_replace('/\D+/', '', $bankAccountNoRaw) ?? '';
 
   $applicantType = trim((string)($in['applicant_type'] ?? ''));
   $companyInfo = trim((string)($in['company_info'] ?? ''));
@@ -199,6 +203,16 @@ function validate_inquiry_input(array $in): array
   }
 
   if ($purpose === '' || $purpose === '선택 안함') $errors[] = '자금용도를 선택해주세요.';
+
+  if ($bankName === '' || mb_strlen($bankName) < 2) $errors[] = '은행명을 입력해주세요.';
+  if (mb_strlen($bankName) > 60) $errors[] = '은행명은 60자 이하로 입력해주세요.';
+
+  if ($bankAccountHolder === '' || mb_strlen($bankAccountHolder) < 2) $errors[] = '예금주를 입력해주세요.';
+  if (mb_strlen($bankAccountHolder) > 80) $errors[] = '예금주는 80자 이하로 입력해주세요.';
+
+  if ($bankAccountNo === '' || strlen($bankAccountNo) < 8 || strlen($bankAccountNo) > 20) {
+    $errors[] = '계좌번호를 정확히 입력해주세요. (숫자 8~20자리)';
+  }
 
   if (!in_array($applicantType, ['personal', 'company', 'delivery'], true)) {
     $errors[] = '신청 유형(개인/기업/배달대행)을 선택해주세요.';
@@ -236,6 +250,9 @@ function validate_inquiry_input(array $in): array
     'amount' => $amount,
     'purpose' => $purpose,
     'memo' => $memo,
+    'bank_name' => $bankName,
+    'bank_account_holder' => $bankAccountHolder,
+    'bank_account_no' => $bankAccountNo,
 
     'applicant_type' => $applicantType,
     'company_info' => $companyInfo,
@@ -311,6 +328,9 @@ $old = [
   'amount' => is_array($draft) ? (string)($draft['amount'] ?? '') : '',
   'purpose' => is_array($draft) ? (string)($draft['purpose'] ?? '선택 안함') : '선택 안함',
   'memo' => is_array($draft) ? (string)($draft['memo'] ?? '') : '',
+  'bank_name' => is_array($draft) ? (string)($draft['bank_name'] ?? '') : '',
+  'bank_account_holder' => is_array($draft) ? (string)($draft['bank_account_holder'] ?? '') : '',
+  'bank_account_no' => is_array($draft) ? (string)($draft['bank_account_no'] ?? '') : '',
 
   'applicant_type' => is_array($draft) ? (string)($draft['applicant_type'] ?? '') : '',
   'company_info' => is_array($draft) ? (string)($draft['company_info'] ?? '') : '',
@@ -417,6 +437,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
         'amount' => $clean['amount'],
         'purpose' => $clean['purpose'] !== '' ? $clean['purpose'] : '선택 안함',
         'memo' => $clean['memo'],
+        'bank_name' => $clean['bank_name'],
+        'bank_account_holder' => $clean['bank_account_holder'],
+        'bank_account_no' => $clean['bank_account_no'],
 
         'applicant_type' => $clean['applicant_type'],
         'company_info' => $clean['company_info'],
@@ -445,6 +468,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
         $amount = $clean['amount'];
         $purpose = $clean['purpose'];
         $memo = $clean['memo'];
+        $bankName = $clean['bank_name'];
+        $bankAccountHolder = $clean['bank_account_holder'];
+        $bankAccountNo = $clean['bank_account_no'];
 
         $applicantType = $clean['applicant_type'];
         $companyInfoText = $clean['company_info'];
@@ -494,6 +520,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
 
               cashhome_1000_loan_amount,
               cashhome_1000_loan_purpose,
+              cashhome_1000_bank_name,
+              cashhome_1000_bank_account_holder,
+              cashhome_1000_bank_account_no,
               cashhome_1000_request_memo,
               cashhome_1000_company_info,
 
@@ -522,6 +551,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
 
               :loan_amount,
               :loan_purpose,
+              :bank_name,
+              :bank_account_holder,
+              :bank_account_no,
               :request_memo,
               :company_info,
 
@@ -559,6 +591,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
 
                 ':loan_amount' => $amount,
                 ':loan_purpose' => $purpose,
+                ':bank_name' => $bankName,
+                ':bank_account_holder' => $bankAccountHolder,
+                ':bank_account_no' => $bankAccountNo,
                 ':request_memo' => $memo !== '' ? $memo : null,
                 ':company_info' => $companyInfoText !== '' ? $companyInfoText : null,
 
@@ -665,6 +700,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
             'amount' => '',
             'purpose' => '선택 안함',
             'memo' => '',
+            'bank_name' => '',
+            'bank_account_holder' => '',
+            'bank_account_no' => '',
 
             'applicant_type' => '',
             'company_info' => '',
@@ -2074,6 +2112,26 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
 
             <div class="row">
               <div>
+                <label for="bank_name">은행명 (필수)</label>
+                <input id="bank_name" name="bank_name" type="text" inputmode="text" placeholder="예: 국민은행" required
+                  value="<?= h($old['bank_name']) ?>" />
+              </div>
+              <div>
+                <label for="bank_account_holder">예금주 (필수)</label>
+                <input id="bank_account_holder" name="bank_account_holder" type="text" inputmode="text" placeholder="예: 홍길동" required
+                  value="<?= h($old['bank_account_holder']) ?>" />
+              </div>
+            </div>
+
+            <div>
+              <label for="bank_account_no">입금 계좌번호 (필수)</label>
+              <input id="bank_account_no" name="bank_account_no" type="text" inputmode="numeric" placeholder="숫자만 입력 (예: 12345678901234)" required
+                value="<?= h($old['bank_account_no']) ?>" />
+              <div class="tiny" style="margin-top:6px;">※ 숫자만 입력해주세요. (하이픈/공백 제외)</div>
+            </div>
+
+            <div class="row">
+              <div>
                 <label for="purpose">자금용도 (필수)</label>
                 <select id="purpose" name="purpose" required>
                   <?php
@@ -2339,6 +2397,23 @@ index.php 스크립트 (전체)
         passive: true
       });
       phoneEl.addEventListener('blur', onInput, {
+        passive: true
+      });
+      onInput();
+    })();
+
+    // 계좌번호 숫자만 허용
+    (function() {
+      const bankNoEl = document.getElementById('bank_account_no');
+      if (!bankNoEl) return;
+      const onInput = () => {
+        const cleaned = (bankNoEl.value || '').replace(/\D+/g, '').slice(0, 20);
+        if (bankNoEl.value !== cleaned) bankNoEl.value = cleaned;
+      };
+      bankNoEl.addEventListener('input', onInput, {
+        passive: true
+      });
+      bankNoEl.addEventListener('blur', onInput, {
         passive: true
       });
       onInput();

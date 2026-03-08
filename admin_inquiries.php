@@ -515,6 +515,9 @@ function fetch_rows(PDO $pdo, array $f): array
         i.cashhome_1000_updated_at,
         i.cashhome_1000_customer_name,
         i.cashhome_1000_customer_phone,
+        i.cashhome_1000_bank_name,
+        i.cashhome_1000_bank_account_holder,
+        i.cashhome_1000_bank_account_no,
         i.cashhome_1000_loan_amount,
         i.cashhome_1000_loan_purpose,
         i.cashhome_1000_request_memo,
@@ -558,6 +561,9 @@ function fetch_rows(PDO $pdo, array $f): array
         i.cashhome_1000_updated_at,
         i.cashhome_1000_customer_name,
         i.cashhome_1000_customer_phone,
+        i.cashhome_1000_bank_name,
+        i.cashhome_1000_bank_account_holder,
+        i.cashhome_1000_bank_account_no,
         i.cashhome_1000_loan_amount,
         i.cashhome_1000_loan_purpose,
         i.cashhome_1000_request_memo,
@@ -1490,6 +1496,9 @@ if (isset($_GET['excel']) && $_GET['excel'] === '1') {
         'cashhome_1000_updated_at' => '수정일시',
         'cashhome_1000_customer_name' => '신청자명',
         'cashhome_1000_customer_phone' => '연락처',
+        'cashhome_1000_bank_name' => '은행명',
+        'cashhome_1000_bank_account_holder' => '예금주',
+        'cashhome_1000_bank_account_no' => '계좌번호',
         'cashhome_1000_loan_amount' => '희망금액',
         'cashhome_1000_loan_purpose' => '자금용도',
         'cashhome_1000_request_memo' => '요청사항',
@@ -1513,6 +1522,9 @@ if (isset($_GET['excel']) && $_GET['excel'] === '1') {
         i.cashhome_1000_updated_at,
         i.cashhome_1000_customer_name,
         i.cashhome_1000_customer_phone,
+        i.cashhome_1000_bank_name,
+        i.cashhome_1000_bank_account_holder,
+        i.cashhome_1000_bank_account_no,
         i.cashhome_1000_loan_amount,
         i.cashhome_1000_loan_purpose,
         i.cashhome_1000_request_memo,
@@ -3923,6 +3935,15 @@ function admin_name_by_id(int $id): string
                                 <?php endif; ?>
                             </div>
 
+                            <div class="k">은행명</div>
+                            <div class="v" id="d_bank_name"><?= h((string)($selected['cashhome_1000_bank_name'] ?? '')) ?></div>
+
+                            <div class="k">예금주</div>
+                            <div class="v" id="d_bank_holder"><?= h((string)($selected['cashhome_1000_bank_account_holder'] ?? '')) ?></div>
+
+                            <div class="k">계좌번호</div>
+                            <div class="v" id="d_bank_no"><?= h((string)($selected['cashhome_1000_bank_account_no'] ?? '')) ?></div>
+
                             <div class="k">희망금액</div>
                             <div class="v" id="d_amount"><?= h((string)($selected['cashhome_1000_loan_amount'] ?? '')) ?></div>
 
@@ -5471,6 +5492,10 @@ function admin_name_by_id(int $id): string
             ${escapeHtml(phone)}
             ${tel ? `<div style="margin-top:8px;"><a class="callBtn" href="tel:${escapeHtml(tel)}">📞 전화걸기</a></div>` : ``}
           </div>
+
+          <div class="k">은행명</div><div class="v">${escapeHtml(sel.cashhome_1000_bank_name||'')}</div>
+          <div class="k">예금주</div><div class="v">${escapeHtml(sel.cashhome_1000_bank_account_holder||'')}</div>
+          <div class="k">계좌번호</div><div class="v">${escapeHtml(sel.cashhome_1000_bank_account_no||'')}</div>
 
           <div class="k">희망금액</div><div class="v">${escapeHtml(sel.cashhome_1000_loan_amount||'')}</div>
           <div class="k">자금용도</div><div class="v">${escapeHtml(sel.cashhome_1000_loan_purpose||'')}</div>
