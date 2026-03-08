@@ -23,8 +23,27 @@ final class LocalStorageAdapter implements StorageAdapterInterface
             }
         }
 
-        if (file_put_contents($fullPath, $binary, LOCK_EX) === false) {
-            throw new \RuntimeException('파일 저장 실패');
+        if (!is_writable($dir)) {
+            @chmod($dir, 0775);
+        }
+        if (!is_writable($dir)) {
+            @chmod($dir, 0777);
+        }
+        if (!is_writable($dir)) {
+            $perms = @fileperms($dir);
+            $permTxt = $perms ? substr(sprintf('%o', $perms), -4) : 'unknown';
+            throw new \RuntimeException('업로드 폴더 쓰기 불가: ' . $dir . ' perms=' . $permTxt);
+        }
+
+        // 일부 스토리지에서 LOCK_EX가 실패할 수 있어 일반 write로 1회 재시도
+        $bytes = @file_put_contents($fullPath, $binary, LOCK_EX);
+        if ($bytes === false) {
+            $bytes = @file_put_contents($fullPath, $binary);
+        }
+        if ($bytes === false) {
+            $last = error_get_last();
+            $reason = (string)($last['message'] ?? 'unknown');
+            throw new \RuntimeException('파일 저장 실패: ' . $fullPath . ' / ' . $reason);
         }
 
         return $relativePath;
