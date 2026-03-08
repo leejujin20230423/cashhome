@@ -1016,6 +1016,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
     }
 }
 
+// =========================
+// 최근 3개월 통계 레포트 뷰(화면 출력용)
+// =========================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') === 'view_report') {
+    header('Content-Type: application/json; charset=utf-8');
+
+    $token = (string)($_POST['csrf_token'] ?? '');
+    if (!hash_equals($_SESSION['csrf_token_admin'], $token)) {
+        echo json_encode(['ok' => false, 'message' => '요청이 만료되었습니다. 새로고침 후 다시 시도해주세요.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    [$okAdmin, $adminErr] = require_admin_for_write();
+    if (!$okAdmin) {
+        echo json_encode(['ok' => false, 'message' => $adminErr], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    try {
+        $view = ThreeMonthReportService::build_web_report_payload($pdo);
+        $_SESSION['csrf_token_admin'] = bin2hex(random_bytes(32));
+
+        echo json_encode([
+            'ok' => true,
+            'title' => $view['title'],
+            'period' => $view['period'],
+            'html' => $view['html'],
+            'csrf_token' => $_SESSION['csrf_token_admin'],
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    } catch (Throwable $e) {
+        error_log('[report_view] ' . $e->getMessage());
+        $_SESSION['csrf_token_admin'] = bin2hex(random_bytes(32));
+        echo json_encode([
+            'ok' => false,
+            'message' => '레포트 생성 중 오류가 발생했습니다.',
+            'csrf_token' => $_SESSION['csrf_token_admin'],
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') === 'save') {
     header('Content-Type: application/json; charset=utf-8');
 
@@ -1536,397 +1578,393 @@ if (isset($_GET['excel']) && $_GET['excel'] === '1') {
 //  * ※ 서버 mail() 환경이 불안정하면 PHPMailer/SMTP로 바꾸는 걸 권장.
 //  */
 
+final class ThreeMonthReportService
+{
+    public static function fmt_kr_date(string $ymd): string
+    {
+        if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $ymd, $m)) return $ymd;
+        $yy = substr($m[1], 2, 2);
+        return sprintf('%s년 %s월 %s일', $yy, $m[2], $m[3]);
+    }
+
+    public static function fetch_rows_for_period(PDO $pdo, string $startDT, string $endDT): array
+    {
+        $stmt = $pdo->prepare("
+          SELECT
+            cashhome_1000_id,
+            cashhome_1000_loan_no,
+            cashhome_1000_created_at,
+            cashhome_1000_customer_name,
+            cashhome_1000_customer_phone,
+            cashhome_1000_loan_amount,
+            cashhome_1000_status,
+            cashhome_1000_outcome,
+            cashhome_1000_doc_token_status,
+            cashhome_1000_doc_token_expires_at
+          FROM cashhome_1000_inquiries
+          WHERE cashhome_1000_created_at BETWEEN :s AND :e
+          ORDER BY cashhome_1000_id DESC
+          LIMIT 20000
+        ");
+        $stmt->execute([':s' => $startDT, ':e' => $endDT]);
+        $rows = $stmt->fetchAll();
+        foreach ($rows as &$r) {
+            $r['cashhome_1000_outcome'] = normalize_outcome_legacy((string)($r['cashhome_1000_outcome'] ?? OC_PENDING));
+            $r['cashhome_1000_status'] = (string)($r['cashhome_1000_status'] ?? ST_NEW);
+        }
+        unset($r);
+        return $rows;
+    }
+
+    public static function group_rows_by_outcome(array $rows): array
+    {
+        $g = [
+            OC_PENDING => [],
+            OC_REVIEWING => [],
+            OC_APPROVED => [],
+            OC_PAID => [],
+            OC_REJECTED => [],
+        ];
+        foreach ($rows as $r) {
+            $oc = normalize_outcome_legacy((string)($r['cashhome_1000_outcome'] ?? OC_PENDING));
+            if (!isset($g[$oc])) $g[$oc] = [];
+            $g[$oc][] = $r;
+        }
+        return $g;
+    }
+
+    public static function group_rows_by_status_master(array $rows): array
+    {
+        $g = [
+            ST_NEW => [],
+            ST_CONTACTED => [],
+            ST_PROGRESSING => [],
+            ST_CLOSED_OK => [],
+            ST_CLOSED_ISSUE => [],
+        ];
+        foreach ($rows as $r) {
+            $st = (string)($r['cashhome_1000_status'] ?? ST_NEW);
+            if (!isset($g[$st])) $g[$st] = [];
+            $g[$st][] = $r;
+        }
+        return $g;
+    }
+
+    public static function token_soon_rows(array $rows): array
+    {
+        $out = [];
+        $now = time();
+        foreach ($rows as $r) {
+            $tkStatus = (int)($r['cashhome_1000_doc_token_status'] ?? 0);
+            $expiresAt = (string)($r['cashhome_1000_doc_token_expires_at'] ?? '');
+            if ($tkStatus !== 1 || $expiresAt === '') continue;
+            $exp = strtotime($expiresAt);
+            if ($exp === false) continue;
+            $diff = $exp - $now;
+            if ($diff > 0 && $diff < TOKEN_SOON_SECONDS) {
+                $r['_remain_hours'] = round($diff / 3600, 1);
+                $out[] = $r;
+            }
+        }
+        return $out;
+    }
+
+    public static function row_line(array $r): string
+    {
+        $name = (string)($r['cashhome_1000_customer_name'] ?? '');
+        $amt  = (string)($r['cashhome_1000_loan_amount'] ?? '');
+        $phone = (string)($r['cashhome_1000_customer_phone'] ?? '');
+        return "-신청자: {$name}\n-금액: {$amt}\n-연락처: {$phone}\n";
+    }
+
+    public static function build_web_report_payload(PDO $pdo): array
+    {
+        $base = self::build_base_data($pdo);
+        $title = '최근 3개월 통계 레포트 (' . self::fmt_kr_date($base['period']['start']) . ' ~ ' . self::fmt_kr_date($base['period']['end']) . ')';
+        return [
+            'title' => $title,
+            'period' => $base['period'],
+            'html' => self::render_report_html($base, false),
+        ];
+    }
+
+    public static function build_mail_body(PDO $pdo): array
+    {
+        $base = self::build_base_data($pdo);
+        $subject = '[CASHHOME] 최근 3개월 통계 리포트 (' . self::fmt_kr_date($base['period']['start']) . ' ~ ' . self::fmt_kr_date($base['period']['end']) . ')';
+        $html = self::render_report_html($base, true);
+
+        $s = $base['summary'];
+        $plain = "(조회기간 표시 {$base['period']['start']} ~ {$base['period']['end']})\n"
+            . "1. 대출 총건수: {$s['total']}\n"
+            . "2. 대기 총건수: {$s['pending']}\n"
+            . "3. 검토 총건수: {$s['reviewing']}\n"
+            . "4. 승인 총건수: {$s['approved']}\n"
+            . "5. 부결 총건수: {$s['rejected']}\n";
+
+        return [$subject, $html, $plain];
+    }
+
+    private static function build_base_data(PDO $pdo): array
+    {
+        $end = new DateTimeImmutable('now');
+        $start = $end->sub(new DateInterval('P3M'));
+
+        $startYmd = $start->format('Y-m-d');
+        $endYmd = $end->format('Y-m-d');
+        $rows = self::fetch_rows_for_period($pdo, $startYmd . ' 00:00:00', $endYmd . ' 23:59:59');
+
+        $groupOutcome = self::group_rows_by_outcome($rows);
+        $groupStatus = self::group_rows_by_status_master($rows);
+        $tokenSoon = self::token_soon_rows($rows);
+
+        $outcomeMap = [
+            OC_PENDING => '대출 대기',
+            OC_REVIEWING => '대출 검토',
+            OC_APPROVED => '대출 승인',
+            OC_PAID => '출금 완료',
+            OC_REJECTED => '대출 부결',
+        ];
+        $outcomeSections = [];
+        foreach ($outcomeMap as $k => $title) {
+            $outcomeSections[] = [
+                'title' => $title,
+                'rows' => $groupOutcome[$k] ?? [],
+            ];
+        }
+
+        $statusMap = [
+            ST_NEW => '대출 신규',
+            ST_CONTACTED => '대출 연락완료',
+            ST_PROGRESSING => '대출 진행중',
+            ST_CLOSED_OK => '대출 정상종결',
+            ST_CLOSED_ISSUE => '대출 문제종결',
+        ];
+        $statusSections = [];
+        foreach ($statusMap as $k => $title) {
+            $statusSections[] = [
+                'title' => $title,
+                'rows' => $groupStatus[$k] ?? [],
+            ];
+        }
+
+        return [
+            'period' => [
+                'start' => $startYmd,
+                'end' => $endYmd,
+                'start_label' => self::fmt_kr_date($startYmd),
+                'end_label' => self::fmt_kr_date($endYmd),
+                'generated_at' => date('Y-m-d H:i:s'),
+            ],
+            'summary' => [
+                'total' => count($rows),
+                'pending' => count($groupOutcome[OC_PENDING] ?? []),
+                'reviewing' => count($groupOutcome[OC_REVIEWING] ?? []),
+                'approved' => count($groupOutcome[OC_APPROVED] ?? []),
+                'paid' => count($groupOutcome[OC_PAID] ?? []),
+                'rejected' => count($groupOutcome[OC_REJECTED] ?? []),
+                'token_soon' => count($tokenSoon),
+            ],
+            'token_soon' => $tokenSoon,
+            'outcome_sections' => $outcomeSections,
+            'status_sections' => $statusSections,
+        ];
+    }
+
+    private static function render_report_html(array $base, bool $forMail): string
+    {
+        $h = static fn(string $s): string => self::esc($s);
+        $period = $base['period'];
+        $summary = $base['summary'];
+        $rootClass = $forMail ? 'report3m report3m-mail' : 'report3m';
+
+        $html = '';
+        if ($forMail) {
+            $html .= '<style>
+                .report3m{font-family:Apple SD Gothic Neo,Malgun Gothic,Arial,sans-serif;color:#0f172a;background:#fff}
+                .report3m-header{background:linear-gradient(135deg,#1e3a8a,#0ea5e9);color:#fff;padding:16px 18px;border-radius:12px}
+                .report3m-title{margin:0 0 6px;font-size:22px}
+                .report3m-sub{margin:0;font-size:13px;opacity:.95}
+                .report3m-summary{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px;margin:14px 0}
+                .report3m-chip{border:1px solid #d5deef;background:#f8fbff;border-radius:10px;padding:10px}
+                .report3m-chip .k{font-size:12px;color:#38507a}
+                .report3m-chip .v{font-size:18px;font-weight:700}
+                .report3m-section{margin-top:18px}
+                .report3m-section h3{margin:0 0 8px;font-size:17px;color:#163c77}
+                .report3m-subtitle{margin:14px 0 6px;font-size:14px;color:#2e4f84}
+                .report3m-table-wrap{border:1px solid #d9e3f3;border-radius:12px;overflow:hidden}
+                .report3m-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:13px}
+                .report3m-table th{background:#1d4f91;color:#fff;font-weight:700;padding:8px 9px;border-right:1px solid rgba(255,255,255,.25)}
+                .report3m-table th:last-child{border-right:0}
+                .report3m-table td{padding:8px 9px;border-top:1px solid #e5ecf7;vertical-align:top;line-height:1.45;word-break:keep-all;overflow-wrap:anywhere}
+                .report3m-table tbody tr:nth-child(even) td{background:#f8fbff}
+                .report3m-table .is-right{text-align:right}
+                .report3m-table .is-center{text-align:center}
+                .report3m-table tfoot td{background:#edf4ff;border-top:2px solid #9bb9ea;font-weight:700}
+                .report3m-foot{margin-top:14px;color:#6b7f9e;font-size:12px}
+            </style>';
+        }
+
+        $html .= '<div class="' . $rootClass . '">';
+        $html .= '<div class="report3m-header">';
+        $html .= '<h2 class="report3m-title">CASHHOME 최근 3개월 통계 레포트</h2>';
+        $html .= '<p class="report3m-sub">조회기간: ' . $h($period['start_label']) . ' ~ ' . $h($period['end_label']) . ' · 생성시각: ' . $h($period['generated_at']) . '</p>';
+        $html .= '</div>';
+
+        $html .= '<div class="report3m-summary">';
+        $html .= self::render_summary_chip('총 접수', $summary['total']);
+        $html .= self::render_summary_chip('대기', $summary['pending']);
+        $html .= self::render_summary_chip('검토', $summary['reviewing']);
+        $html .= self::render_summary_chip('승인', $summary['approved']);
+        $html .= self::render_summary_chip('출금완료', $summary['paid']);
+        $html .= self::render_summary_chip('부결', $summary['rejected']);
+        $html .= self::render_summary_chip('토큰 만료임박', $summary['token_soon']);
+        $html .= self::render_summary_chip('승인율', $summary['total'] > 0 ? round(($summary['approved'] * 100) / $summary['total'], 1) . '%' : '0%');
+        $html .= '</div>';
+
+        $html .= '<section class="report3m-section">';
+        $html .= '<h3>토큰 만료 임박 (5시간 미만)</h3>';
+        $html .= self::render_table($base['token_soon']);
+        $html .= '</section>';
+
+        $html .= '<section class="report3m-section">';
+        $html .= '<h3>대출결과별 상세</h3>';
+        foreach ($base['outcome_sections'] as $sec) {
+            $html .= '<h4 class="report3m-subtitle">' . $h((string)$sec['title']) . '</h4>';
+            $html .= self::render_table((array)$sec['rows']);
+        }
+        $html .= '</section>';
+
+        $html .= '<section class="report3m-section">';
+        $html .= '<h3>처리상태별 상세</h3>';
+        foreach ($base['status_sections'] as $sec) {
+            $html .= '<h4 class="report3m-subtitle">' . $h((string)$sec['title']) . '</h4>';
+            $html .= self::render_table((array)$sec['rows']);
+        }
+        $html .= '</section>';
+
+        $html .= '<div class="report3m-foot">※ 모든 표 하단에 합계(건수/금액)가 포함됩니다.</div>';
+        if ($forMail) {
+            $html .= '<div class="report3m-foot">※ 본 메일은 3시간마다 자동 발송됩니다.</div>';
+        }
+        $html .= '</div>';
+        return $html;
+    }
+
+    private static function render_summary_chip(string $label, string|int|float $value): string
+    {
+        return '<div class="report3m-chip"><div class="k">' . self::esc($label) . '</div><div class="v">' . self::esc((string)$value) . '</div></div>';
+    }
+
+    private static function render_table(array $rows): string
+    {
+        $count = count($rows);
+        $sumAmt = 0;
+
+        $html = '<div class="report3m-table-wrap">';
+        $html .= '<table class="report3m-table">';
+        $html .= '<thead><tr>'
+            . '<th class="is-center">순번</th>'
+            . '<th>접수번호</th>'
+            . '<th>신청일시</th>'
+            . '<th>신청자</th>'
+            . '<th>연락처</th>'
+            . '<th class="is-right">희망금액</th>'
+            . '<th>처리상태</th>'
+            . '<th>대출결과</th>'
+            . '</tr></thead><tbody>';
+
+        if ($count === 0) {
+            $html .= '<tr><td colspan="8" class="is-center">데이터가 없습니다.</td></tr>';
+        } else {
+            $i = 0;
+            foreach ($rows as $r) {
+                $i++;
+                $amt = self::parse_amount($r['cashhome_1000_loan_amount'] ?? '');
+                $sumAmt += $amt;
+                $html .= '<tr>'
+                    . '<td class="is-center">' . $i . '</td>'
+                    . '<td>' . self::esc(self::loan_no4($r)) . '</td>'
+                    . '<td>' . self::esc((string)($r['cashhome_1000_created_at'] ?? '')) . '</td>'
+                    . '<td>' . self::esc((string)($r['cashhome_1000_customer_name'] ?? '')) . '</td>'
+                    . '<td>' . self::esc((string)($r['cashhome_1000_customer_phone'] ?? '')) . '</td>'
+                    . '<td class="is-right">' . self::esc(self::fmt_amount($amt)) . '</td>'
+                    . '<td>' . self::esc(status_label((string)($r['cashhome_1000_status'] ?? ST_NEW))) . '</td>'
+                    . '<td>' . self::esc(outcome_label((string)normalize_outcome_legacy((string)($r['cashhome_1000_outcome'] ?? OC_PENDING)))) . '</td>'
+                    . '</tr>';
+            }
+        }
+
+        $html .= '</tbody><tfoot><tr>'
+            . '<td colspan="4">합계</td>'
+            . '<td>총 ' . self::esc((string)$count) . '건</td>'
+            . '<td class="is-right">' . self::esc(self::fmt_amount($sumAmt)) . '</td>'
+            . '<td colspan="2"></td>'
+            . '</tr></tfoot>';
+        $html .= '</table></div>';
+
+        return $html;
+    }
+
+    private static function parse_amount(mixed $v): int
+    {
+        $n = preg_replace('/[^\d]/', '', (string)$v);
+        if ($n === null || $n === '') return 0;
+        return (int)$n;
+    }
+
+    private static function fmt_amount(int $amt): string
+    {
+        if ($amt <= 0) return '0 원';
+        return number_format($amt) . ' 원';
+    }
+
+    private static function loan_no4(array $r): string
+    {
+        $raw = trim((string)($r['cashhome_1000_loan_no'] ?? ''));
+        if ($raw === '' || $raw === '00') return '-';
+        return substr($raw, -4);
+    }
+
+    private static function esc(string $s): string
+    {
+        return htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }
+}
+
 function fmt_kr_date(string $ymd): string
 {
-    // YYYY-MM-DD -> YY년 MM월 DD일
-    if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $ymd, $m)) return $ymd;
-    $yy = substr($m[1], 2, 2);
-    return sprintf('%s년 %s월 %s일', $yy, $m[2], $m[3]);
+    return ThreeMonthReportService::fmt_kr_date($ymd);
 }
 
 function fetch_rows_for_period(PDO $pdo, string $startDT, string $endDT): array
 {
-    // 리포트는 필터/권한과 무관하게 전체를 기준으로 잡는 게 일반적이어서 별도 조회
-    $stmt = $pdo->prepare("
-      SELECT
-        cashhome_1000_id,
-        cashhome_1000_loan_no,
-        cashhome_1000_created_at,
-        cashhome_1000_customer_name,
-        cashhome_1000_customer_phone,
-        cashhome_1000_loan_amount,
-        cashhome_1000_status,
-        cashhome_1000_outcome,
-        cashhome_1000_doc_token_status,
-        cashhome_1000_doc_token_expires_at
-      FROM cashhome_1000_inquiries
-      WHERE cashhome_1000_created_at BETWEEN :s AND :e
-      ORDER BY cashhome_1000_id DESC
-      LIMIT 20000
-    ");
-    $stmt->execute([':s' => $startDT, ':e' => $endDT]);
-    $rows = $stmt->fetchAll();
-    foreach ($rows as &$r) {
-        $r['cashhome_1000_outcome'] = normalize_outcome_legacy((string)($r['cashhome_1000_outcome'] ?? OC_PENDING));
-        $r['cashhome_1000_status'] = (string)($r['cashhome_1000_status'] ?? ST_NEW);
-    }
-    unset($r);
-    return $rows;
+    return ThreeMonthReportService::fetch_rows_for_period($pdo, $startDT, $endDT);
 }
 
 function group_rows_by_outcome(array $rows): array
 {
-    $g = [
-        OC_PENDING => [],
-        OC_REVIEWING => [],
-        OC_APPROVED => [],
-        OC_PAID => [],
-        OC_REJECTED => [],
-    ];
-    foreach ($rows as $r) {
-        $oc = normalize_outcome_legacy((string)($r['cashhome_1000_outcome'] ?? OC_PENDING));
-        $g[$oc][] = $r;
-    }
-    return $g;
+    return ThreeMonthReportService::group_rows_by_outcome($rows);
 }
 
 function group_rows_by_status_master(array $rows): array
 {
-    $g = [
-        ST_NEW => [],
-        ST_CONTACTED => [],
-        ST_PROGRESSING => [],
-        ST_CLOSED_OK => [],
-        ST_CLOSED_ISSUE => [],
-    ];
-    foreach ($rows as $r) {
-        $st = (string)($r['cashhome_1000_status'] ?? ST_NEW);
-        if (!isset($g[$st])) $g[$st] = [];
-        $g[$st][] = $r;
-    }
-    return $g;
+    return ThreeMonthReportService::group_rows_by_status_master($rows);
 }
 
 function token_soon_rows(array $rows): array
 {
-    $out = [];
-    $now = time();
-    foreach ($rows as $r) {
-        $tkStatus = (int)($r['cashhome_1000_doc_token_status'] ?? 0);
-        $expiresAt = (string)($r['cashhome_1000_doc_token_expires_at'] ?? '');
-        if ($tkStatus !== 1 || $expiresAt === '') continue;
-        $exp = strtotime($expiresAt);
-        if ($exp === false) continue;
-        $diff = $exp - $now;
-        if ($diff > 0 && $diff < TOKEN_SOON_SECONDS) $out[] = $r;
-    }
-    return $out;
+    return ThreeMonthReportService::token_soon_rows($rows);
 }
 
 function row_line(array $r): string
 {
-    $name = (string)($r['cashhome_1000_customer_name'] ?? '');
-    $amt  = (string)($r['cashhome_1000_loan_amount'] ?? '');
-    $phone = (string)($r['cashhome_1000_customer_phone'] ?? '');
-    $loanNo = (string)($r['cashhome_1000_loan_no'] ?? '');
-    $displayNo = ($loanNo !== '' && $loanNo !== '00') ? substr($loanNo, -4) : '';
-
-    return "-신청자: {$name}\n-금액: {$amt}\n-연락처: {$phone}\n";
+    return ThreeMonthReportService::row_line($r);
 }
 
 function build_report_mail_body(PDO $pdo): array
 {
-    // 최근 3개월
-    $end = new DateTimeImmutable('now');
-    $start = $end->sub(new DateInterval('P3M'));
-
-    $startYmd = $start->format('Y-m-d');
-    $endYmd   = $end->format('Y-m-d');
-
-    $startDT = $startYmd . ' 00:00:00';
-    $endDT   = $endYmd . ' 23:59:59';
-
-    $rows = fetch_rows_for_period($pdo, $startDT, $endDT);
-
-    // ✅ 3개월 리포트용 그룹핑(대출결과/처리상태)
-    $groupOutcome = [];
-    $groupStatusM = [];
-    foreach ($rows as &$rr) {
-        $rr['cashhome_1000_outcome'] = normalize_outcome_legacy((string)($rr['cashhome_1000_outcome'] ?? OC_PENDING));
-        $rr['cashhome_1000_status'] = (string)($rr['cashhome_1000_status'] ?? ST_NEW);
-
-        $oc = (string)$rr['cashhome_1000_outcome'];
-        $st = (string)$rr['cashhome_1000_status'];
-
-        if (!isset($groupOutcome[$oc])) $groupOutcome[$oc] = [];
-        $groupOutcome[$oc][] = $rr;
-
-        if (!isset($groupStatusM[$st])) $groupStatusM[$st] = [];
-        $groupStatusM[$st][] = $rr;
-    }
-    unset($rr);
-
-    $total = count($rows);
-
-    // outcome 집계
-    $cntPending  = count($groupOutcome[OC_PENDING] ?? []);
-    $cntReviewing = count($groupOutcome[OC_REVIEWING] ?? []);
-    $cntRejected = count($groupOutcome[OC_REJECTED] ?? []);
-    $cntApproved = count($groupOutcome[OC_APPROVED] ?? []);
-
-    // token 만료(5시간 미만)
-    $expiring = [];
-    $nowTs = time();
-    foreach ($rows as $r) {
-        $status = (int)($r['cashhome_1000_doc_token_status'] ?? 0); // 1=발급, 2=사용
-        $expiresAt = (string)($r['cashhome_1000_doc_token_expires_at'] ?? '');
-        if ($status !== 1 || $expiresAt === '') continue;
-
-        $expTs = strtotime($expiresAt);
-        if ($expTs === false) continue;
-
-        $remainSec = $expTs - $nowTs;
-        if ($remainSec <= 0) continue;
-        if ($remainSec < 5 * 3600) {
-            $r['_remain_hours'] = round($remainSec / 3600, 2);
-            $expiring[] = $r;
-        }
-    }
-
-    // status(master 기준) 집계 (위에서 그룹핑)
-
-    $subject = '[CASHHOME] 최근 3개월 통계 리포트 (' . fmt_kr_date($startYmd) . ' ~ ' . fmt_kr_date($endYmd) . ')';
-
-    $h = static function (string $s): string {
-        return htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    };
-
-    $loanNo4 = static function (array $r): string {
-        $raw = (string)($r['cashhome_1000_loan_no'] ?? '');
-        $raw = trim($raw);
-        if ($raw === '') return '';
-        return mb_substr($raw, -4);
-    };
-
-    $fmtAmt = static function ($v): string {
-        $n = (string)$v;
-        $n = preg_replace('/[^\d]/', '', $n);
-        if ($n === '') return '';
-        return number_format((int)$n);
-    };
-
-    $renderTable = static function (array $rows) use ($h, $loanNo4, $fmtAmt): string {
-        if (!$rows) {
-            return '<div style="color:#666;font-size:12px;">(없음)</div>';
-        }
-
-        $tableStyle = 'border-collapse:collapse;width:100%;font-size:12px;';
-        $thStyle = 'background:#f2f2f2;border:1px solid #ddd;padding:7px;white-space:nowrap;';
-        $tdStyle = 'border:1px solid #ddd;padding:7px;vertical-align:top;';
-
-        $html = '<table cellpadding="0" cellspacing="0" style="' . $tableStyle . '">';
-        $html .= '<thead><tr>'
-            . '<th align="center" style="' . $thStyle . '">순번</th>'
-            . '<th align="left" style="' . $thStyle . '">대출번호</th>'
-            . '<th align="left" style="' . $thStyle . '">신청일시</th>'
-            . '<th align="left" style="' . $thStyle . '">신청자</th>'
-            . '<th align="left" style="' . $thStyle . '">연락처</th>'
-            . '<th align="right" style="' . $thStyle . '">금액</th>'
-            . '<th align="left" style="' . $thStyle . '">처리상태</th>'
-            . '<th align="left" style="' . $thStyle . '">대출결과</th>'
-            . '</tr></thead><tbody>';
-
-        $i = 0;
-        foreach ($rows as $r) {
-            $i++;
-            $bg = ($i % 2 === 0) ? 'background:#fafafa;' : '';
-            $no4 = $h($loanNo4($r));
-            $created = $h((string)($r['cashhome_1000_created_at'] ?? ''));
-            $name = $h((string)($r['cashhome_1000_customer_name'] ?? ''));
-            $phone = $h((string)($r['cashhome_1000_customer_phone'] ?? ''));
-            $amt  = $h($fmtAmt($r['cashhome_1000_loan_amount'] ?? ''));
-            $st = $h(status_label((string)($r['cashhome_1000_status'] ?? ST_NEW)));
-            $oc = $h(outcome_label((string)normalize_outcome_legacy((string)($r['cashhome_1000_outcome'] ?? OC_PENDING))));
-            $html .= '<tr style="' . $bg . '">'
-                . '<td align="center" style="' . $tdStyle . '">' . $i . '</td>'
-                . '<td style="' . $tdStyle . '">' . $no4 . '</td>'
-                . '<td style="' . $tdStyle . '">' . $created . '</td>'
-                . '<td style="' . $tdStyle . '">' . $name . '</td>'
-                . '<td style="' . $tdStyle . '">' . $phone . '</td>'
-                . '<td align="right" style="' . $tdStyle . '">' . $amt . '</td>'
-                . '<td style="' . $tdStyle . '">' . $st . '</td>'
-                . '<td style="' . $tdStyle . '">' . $oc . '</td>'
-
-                . '</tr>';
-        }
-
-        $html .= '</tbody></table>';
-        return $html;
-    };
-
-
-    $html = '';
-    $html .= '<div style="font-family:Apple SD Gothic Neo,Malgun Gothic,Arial,sans-serif;">';
-    $html .= '<h2 style="margin:0 0 10px 0;">CASHHOME 통계 리포트</h2>';
-    $html .= '<div style="margin:0 0 14px 0;color:#333;">(조회기간 표시 ' . $h(fmt_kr_date($startYmd)) . ' ~ ' . $h(fmt_kr_date($endYmd)) . ' 까지)</div>';
-
-    // 요약
-    $html .= '<h3 style="margin:18px 0 8px 0;">%대출정보</h3>';
-    $html .= '<ul style="margin:0 0 12px 18px;padding:0;">'
-        . '<li>대출 총건수: <b>' . $total . '</b></li>'
-        . '<li>대기 총건수: <b>' . $cntPending . '</b></li>'
-        . '<li>검토 총건수: <b>' . $cntReviewing . '</b></li>'
-        . '<li>부결 총건수: <b>' . $cntRejected . '</b></li>'
-        . '<li>승인 총건수: <b>' . $cntApproved . '</b></li>'
-        . '</ul>';
-
-    // 토큰 만료
-    $html .= '<h3 style="margin:18px 0 8px 0;">토큰 만료 요약</h3>';
-    $html .= '<div style="margin:0 0 8px 0;">1. 토큰이 5시간 미만으로 남은 건수가 <b>' . count($expiring) . '</b>건(서류등록 독촉)</div>';
-    $html .= $renderTable($expiring);
-
-    // outcome 섹션
-    $html .= '<h3 style="margin:22px 0 8px 0;">대출결과 요약</h3>';
-
-    $mapOutcomeOrder = [
-        OC_PENDING => '1. 대출 대기건',
-        OC_REVIEWING => '2. 대출 검토건',
-        OC_APPROVED => '3. 대출 승인',
-        OC_PAID => '4. 대출 출금완료',
-        OC_REJECTED => '5. 대출 부결',
-    ];
-
-    foreach ($mapOutcomeOrder as $k => $title) {
-        $rows2 = $groupOutcome[$k] ?? [];
-        $html .= '<h4 style="margin:14px 0 6px 0;">' . $h($title) . ' : <b>' . count($rows2) . '</b>건</h4>';
-        $html .= $renderTable($rows2);
-    }
-
-    // status 섹션(master 기준)
-    $html .= '<h3 style="margin:22px 0 8px 0;">처리상태 요약</h3>';
-    $html .= '<div style="margin:0 0 10px 0;color:#333;">master=신규 / 연락완료 /대출진행중/ 정상종결 / 문제종결</div>';
-
-    $mapStatusOrder = [
-        ST_NEW => '1.대출 신규',
-        ST_CONTACTED => '2.대출 연락완료',
-        ST_PROGRESSING => '3.대출 진행',
-        ST_CLOSED_OK => '4.대출 정상종결',
-        ST_CLOSED_ISSUE => '5.대출 문제종결',
-    ];
-    foreach ($mapStatusOrder as $k => $title) {
-        $rows3 = $groupStatusM[$k] ?? [];
-        $html .= '<h4 style="margin:14px 0 6px 0;">' . $h($title) . ' : <b>' . count($rows3) . '</b>건</h4>';
-        $html .= $renderTable($rows3);
-    }
-
-    $html .= '<div style="margin-top:18px;color:#888;font-size:12px;">※ 본 메일은 3시간마다 자동 발송됩니다.</div>';
-    $html .= '</div>';
-
-
-    $columns = [
-        'cashhome_1000_loan_no' => '접수번호',
-        'cashhome_1000_created_at' => '접수일시',
-        'cashhome_1000_customer_name' => '신청자명',
-        'cashhome_1000_customer_phone' => '연락처',
-        'cashhome_1000_loan_amount' => '희망금액',
-        'cashhome_1000_loan_purpose' => '자금용도',
-        'cashhome_1000_status' => '처리상태',
-        'cashhome_1000_outcome' => '대출결과',
-        'cashhome_1000_processed_at' => '처리일시'
-    ];
-
-    $sql = "
-      SELECT
-        i.cashhome_1000_loan_no,
-        i.cashhome_1000_created_at,
-        i.cashhome_1000_updated_at,
-        i.cashhome_1000_customer_name,
-        i.cashhome_1000_customer_phone,
-        i.cashhome_1000_loan_amount,
-        i.cashhome_1000_loan_purpose,
-        i.cashhome_1000_request_memo,
-        i.cashhome_1000_user_ip,
-        i.cashhome_1000_user_agent,
-        i.cashhome_1000_agree_privacy,
-        i.cashhome_1000_privacy_policy_version,
-        i.cashhome_1000_privacy_agreed_at,
-        i.cashhome_1000_agree_marketing,
-        i.cashhome_1000_marketing_agreed_at,
-        i.cashhome_1000_status,
-        i.cashhome_1000_outcome,
-        i.cashhome_1000_processed_at,
-        i.cashhome_1000_admin_note
-      FROM cashhome_1000_inquiries i
-      WHERE 1
-      ORDER BY i.cashhome_1000_id DESC
-      LIMIT 50000
-    ";
-
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute();
-
-    // ===============================
-    // 대출 신청 리스트 테이블 시작
-    // ===============================
-
-    $html .= '<div style="margin-top:30px;">';
-    $html .= '<h3 style="margin-bottom:10px;">📋 신규 대출 신청 목록</h3>';
-
-    $html .= '<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:12px;">';
-
-    // ✅ 테이블 헤더
-    $html .= '<thead style="background:#f5f5f5;">';
-    $html .= '<tr>';
-    foreach ($columns as $label) {
-        $html .= '<th style="border:1px solid #ddd;">' . htmlspecialchars($label) . '</th>';
-    }
-    $html .= '</tr>';
-    $html .= '</thead>';
-
-    $html .= '<tbody>';
-
-    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-
-        $row['cashhome_1000_outcome'] = normalize_outcome_legacy((string)($row['cashhome_1000_outcome'] ?? ''));
-
-        $html .= '<tr>';
-
-        foreach (array_keys($columns) as $k) {
-
-            $v = $row[$k] ?? '';
-
-            // ===== 값 변환 로직 =====
-            if ($k === 'cashhome_1000_loan_no') {
-                $vv = trim((string)$v);
-                $v = ($vv !== '' && $vv !== '00') ? substr($vv, -4) : '';
-            } elseif ($k === 'cashhome_1000_agree_privacy' || $k === 'cashhome_1000_agree_marketing') {
-                $v = consent_label((string)$v);
-            } elseif ($k === 'cashhome_1000_status') {
-                $v = status_label((string)$v);
-            } elseif ($k === 'cashhome_1000_outcome') {
-                $v = outcome_label((string)$v);
-            }
-
-            $html .= '<td style="border:1px solid #ddd;">' . nl2br(htmlspecialchars((string)$v)) . '</td>';
-        }
-
-        $html .= '</tr>';
-    }
-
-    $html .= '</tbody>';
-    $html .= '</table>';
-    $html .= '</div>';
-
-
-    // plain fallback(간단 요약)
-    $plain = "(조회기간 표시 {$startYmd} ~ {$endYmd})\n"
-        . "%대출정보\n"
-        . "1.대출 총건수: {$total}\n"
-        . "2.대기 총건수 : {$cntPending}\n"
-        . "3.부결 총건수: {$cntRejected}\n"
-        . "4.승인 총건수: {$cntApproved}\n";
-
-    return [$subject, $html, $plain];
+    return ThreeMonthReportService::build_mail_body($pdo);
 }
 
 
@@ -3186,6 +3224,344 @@ function admin_name_by_id(int $id): string
             font-size: 12px;
             word-break: break-word;
         }
+
+        .reportModal .modalBox {
+            width: min(1260px, 97vw);
+            max-height: 94vh;
+            border-color: rgba(151, 185, 231, .45);
+            background: #f3f7ff;
+        }
+
+        .reportModal .modalHead {
+            border-bottom: 1px solid rgba(130, 161, 207, .35);
+            background: linear-gradient(135deg, #133a72, #0a75ad);
+            color: #f8fcff;
+        }
+
+        .reportModal .modalBody {
+            padding: 14px;
+            background: #edf3ff;
+            overflow: auto;
+        }
+
+        .reportViewContent {
+            min-height: 160px;
+        }
+
+        .report3m {
+            color: #0f172a;
+            background: #ffffff;
+            border-radius: 14px;
+            border: 1px solid #dbe7fb;
+            padding: 16px;
+            box-shadow: 0 8px 26px rgba(20, 57, 104, .10);
+        }
+
+        .report3m-header {
+            background: linear-gradient(135deg, #1e3a8a, #0ea5e9);
+            color: #f8fbff;
+            border-radius: 12px;
+            padding: 15px 16px;
+        }
+
+        .report3m-title {
+            margin: 0 0 6px;
+            font-size: 24px;
+            letter-spacing: -.3px;
+        }
+
+        .report3m-sub {
+            margin: 0;
+            font-size: 13px;
+            opacity: .96;
+        }
+
+        .report3m-summary {
+            margin-top: 12px;
+            display: grid;
+            grid-template-columns: repeat(4, minmax(120px, 1fr));
+            gap: 8px;
+        }
+
+        .report3m-chip {
+            border: 1px solid #d5e2f6;
+            background: linear-gradient(180deg, #f6faff, #eef4ff);
+            border-radius: 10px;
+            padding: 10px 11px;
+        }
+
+        .report3m-chip .k {
+            color: #365180;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.3;
+        }
+
+        .report3m-chip .v {
+            margin-top: 2px;
+            font-size: 19px;
+            font-weight: 900;
+            color: #102a54;
+            line-height: 1.2;
+        }
+
+        .report3m-section {
+            margin-top: 18px;
+        }
+
+        .report3m-section h3 {
+            margin: 0 0 8px;
+            font-size: 17px;
+            color: #163c77;
+            letter-spacing: -.15px;
+        }
+
+        .report3m-subtitle {
+            margin: 14px 0 6px;
+            font-size: 14px;
+            color: #2e4f84;
+        }
+
+        .report3m-table-wrap {
+            border: 1px solid #d9e3f3;
+            border-radius: 12px;
+            overflow: auto;
+            background: #fff;
+        }
+
+        .report3m-table {
+            width: 100%;
+            min-width: 980px;
+            border-collapse: collapse;
+            table-layout: fixed;
+            font-size: 13px;
+            color: #0f172a;
+        }
+
+        .report3m-table th {
+            background: linear-gradient(180deg, #1f4f90, #1a4278);
+            color: #ffffff;
+            font-size: 13px;
+            font-weight: 900;
+            padding: 9px 8px;
+            border-right: 1px solid rgba(255, 255, 255, .24);
+            text-align: left;
+            white-space: nowrap;
+        }
+
+        .report3m-table th:last-child {
+            border-right: 0;
+        }
+
+        .report3m-table td {
+            border-top: 1px solid #e6edf8;
+            padding: 8px 9px;
+            vertical-align: top;
+            line-height: 1.55;
+            white-space: normal;
+            word-break: keep-all;
+            overflow-wrap: anywhere;
+        }
+
+        .report3m-table tbody tr:nth-child(even) td {
+            background: #f8fbff;
+        }
+
+        .report3m-table .is-right {
+            text-align: right;
+        }
+
+        .report3m-table .is-center {
+            text-align: center;
+        }
+
+        .report3m-table tfoot td {
+            background: #edf4ff;
+            border-top: 2px solid #95b7ec;
+            font-weight: 900;
+        }
+
+        .report3m-foot {
+            margin-top: 12px;
+            color: #5f7394;
+            font-size: 12px;
+        }
+
+        .report3m-loading,
+        .report3m-error {
+            padding: 20px 14px;
+            border-radius: 12px;
+            border: 1px solid #cfe0fa;
+            background: #fff;
+            color: #123967;
+            font-size: 14px;
+            font-weight: 700;
+            text-align: center;
+        }
+
+        .report3m-error {
+            border-color: #f3c2c2;
+            color: #9f2f2f;
+            background: #fff5f5;
+        }
+
+        @media (max-width: 1100px) {
+            .report3m-summary {
+                grid-template-columns: repeat(2, minmax(120px, 1fr));
+            }
+
+            .report3m-table {
+                min-width: 860px;
+            }
+        }
+
+        @page {
+            size: A4 portrait;
+            margin: 10mm;
+        }
+
+        @media print {
+            body {
+                background: #fff !important;
+            }
+
+            body.report-print-mode .wrap {
+                display: none !important;
+            }
+
+            body.report-print-mode #docModal {
+                display: none !important;
+            }
+
+            body.report-print-mode #reportViewModal {
+                display: block !important;
+                position: static !important;
+                inset: auto !important;
+                padding: 0 !important;
+                background: #fff !important;
+                backdrop-filter: none !important;
+            }
+
+            body.report-print-mode #reportViewModal .modalBox {
+                width: auto !important;
+                max-height: none !important;
+                border: 0 !important;
+                border-radius: 0 !important;
+                box-shadow: none !important;
+                background: #fff !important;
+            }
+
+            body.report-print-mode #reportViewModal .modalHead {
+                background: #fff !important;
+                color: #000 !important;
+                border: 0 !important;
+                padding: 0 0 6mm 0 !important;
+            }
+
+            body.report-print-mode #reportViewModal .modalBtns {
+                display: none !important;
+            }
+
+            body.report-print-mode #reportViewModal .modalBody {
+                padding: 0 !important;
+                background: #fff !important;
+                overflow: visible !important;
+            }
+
+            body.report-print-mode .report3m {
+                padding: 0 !important;
+                border: 0 !important;
+                border-radius: 0 !important;
+                box-shadow: none !important;
+            }
+
+            body.report-print-mode .report3m-header {
+                border-radius: 0 !important;
+                padding: 0 0 5mm 0 !important;
+                background: #fff !important;
+                color: #000 !important;
+                border-bottom: 1px solid #cfd9e7;
+            }
+
+            body.report-print-mode .report3m-title {
+                font-size: 19pt !important;
+                margin: 0 0 2mm 0 !important;
+            }
+
+            body.report-print-mode .report3m-sub {
+                font-size: 10.5pt !important;
+                color: #1f2937 !important;
+            }
+
+            body.report-print-mode .report3m-summary {
+                grid-template-columns: repeat(4, 1fr) !important;
+                gap: 2.5mm !important;
+                margin-top: 4mm !important;
+            }
+
+            body.report-print-mode .report3m-chip {
+                border-color: #b8c9e1 !important;
+                background: #f7faff !important;
+                padding: 2.2mm !important;
+            }
+
+            body.report-print-mode .report3m-chip .k {
+                font-size: 9.6pt !important;
+            }
+
+            body.report-print-mode .report3m-chip .v {
+                font-size: 12.4pt !important;
+            }
+
+            body.report-print-mode .report3m-section {
+                margin-top: 5mm !important;
+                break-inside: avoid-page;
+            }
+
+            body.report-print-mode .report3m-section h3 {
+                font-size: 12.5pt !important;
+                margin: 0 0 2.2mm 0 !important;
+                color: #0f172a !important;
+            }
+
+            body.report-print-mode .report3m-subtitle {
+                font-size: 10.8pt !important;
+                margin: 3mm 0 1.8mm 0 !important;
+                color: #1f2a3a !important;
+            }
+
+            body.report-print-mode .report3m-table-wrap {
+                border-color: #8fa3c0 !important;
+                overflow: visible !important;
+            }
+
+            body.report-print-mode .report3m-table {
+                min-width: 0 !important;
+                font-size: 10.5pt !important;
+            }
+
+            body.report-print-mode .report3m-table th {
+                background: #e6eef9 !important;
+                color: #111827 !important;
+                border-right: 1px solid #a9bbd8 !important;
+                border-bottom: 1px solid #a9bbd8 !important;
+                padding: 2.2mm !important;
+                font-size: 10.3pt !important;
+            }
+
+            body.report-print-mode .report3m-table td {
+                border-top: 1px solid #d4dfef !important;
+                padding: 2.1mm !important;
+                line-height: 1.45 !important;
+                font-size: 10.2pt !important;
+            }
+
+            body.report-print-mode .report3m-table tfoot td {
+                border-top: 1px solid #8da5c7 !important;
+                background: #f0f5fd !important;
+                font-size: 10.4pt !important;
+            }
+        }
     </style>
 </head>
 
@@ -3632,6 +4008,7 @@ function admin_name_by_id(int $id): string
                                     <?= $lockClosedForRole ? '※ 종결된 건(admin)은 처리상태/대출결과 변경이 불가합니다. 메모 저장은 가능합니다.' : '※ 변경 후 저장 버튼을 눌러야 DB에 반영됩니다.' ?>
                                 </span>
                                 <button class="btn primary" id="reportBtn" type="button">최근 3개월간 통계보기</button>
+                                <button class="btn" id="reportViewBtn" type="button">최근 3개월간 레포트 보기</button>
                             </div>
                         </div>
 
@@ -3837,6 +4214,21 @@ function admin_name_by_id(int $id): string
                     <button type="button" class="btn" id="docModalNext">다음 ▶</button>
                 </div>
                 <div class="modalMeta" id="docModalIndex">0 / 0</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal reportModal" id="reportViewModal" aria-hidden="true">
+        <div class="modalBox" role="dialog" aria-modal="true" aria-label="최근 3개월 통계 레포트">
+            <div class="modalHead">
+                <b id="reportViewTitle">최근 3개월 통계 레포트</b>
+                <div class="modalBtns">
+                    <button type="button" class="btn" id="reportViewPrintBtn">A4 인쇄</button>
+                    <button type="button" class="btn" id="reportViewCloseBtn">닫기 ✕</button>
+                </div>
+            </div>
+            <div class="modalBody">
+                <div id="reportViewContent" class="reportViewContent"></div>
             </div>
         </div>
     </div>
@@ -4120,6 +4512,137 @@ function admin_name_by_id(int $id): string
                 });
                 excelBtn.setAttribute("href", "admin_inquiries.php?" + q);
             }
+
+            class ReportViewController {
+                constructor() {
+                    this.modal = document.getElementById("reportViewModal");
+                    this.titleEl = document.getElementById("reportViewTitle");
+                    this.contentEl = document.getElementById("reportViewContent");
+                    this.closeBtn = document.getElementById("reportViewCloseBtn");
+                    this.printBtn = document.getElementById("reportViewPrintBtn");
+                    this.isLoading = false;
+
+                    if (this.closeBtn) {
+                        this.closeBtn.addEventListener("click", () => this.close());
+                    }
+                    if (this.printBtn) {
+                        this.printBtn.addEventListener("click", () => this.print());
+                    }
+                    if (this.modal) {
+                        this.modal.addEventListener("click", (e) => {
+                            if (e.target === this.modal) this.close();
+                        });
+                    }
+                    document.addEventListener("keydown", (e) => {
+                        if (e.key === "Escape") this.close();
+                    });
+                }
+
+                bindOpenButton(btn) {
+                    if (!btn || btn.dataset.bound === "1") return;
+                    btn.dataset.bound = "1";
+                    btn.addEventListener("click", () => this.open());
+                }
+
+                show() {
+                    if (!this.modal) return;
+                    this.modal.classList.add("on");
+                    this.modal.setAttribute("aria-hidden", "false");
+                }
+
+                close() {
+                    if (!this.modal) return;
+                    this.modal.classList.remove("on");
+                    this.modal.setAttribute("aria-hidden", "true");
+                    document.body.classList.remove("report-print-mode");
+                }
+
+                print() {
+                    if (!this.modal || !this.modal.classList.contains("on")) return;
+                    const body = document.body;
+                    const cleanup = () => {
+                        body.classList.remove("report-print-mode");
+                    };
+                    body.classList.add("report-print-mode");
+                    window.addEventListener("afterprint", cleanup, {
+                        once: true
+                    });
+                    try {
+                        window.print();
+                    } finally {
+                        setTimeout(cleanup, 800);
+                    }
+                }
+
+                setLoading() {
+                    if (!this.contentEl) return;
+                    this.contentEl.innerHTML = '<div class="report3m-loading">최근 3개월 레포트를 불러오는 중입니다...</div>';
+                }
+
+                setError(msg) {
+                    if (!this.contentEl) return;
+                    this.contentEl.innerHTML = `<div class="report3m-error">${escapeHtml(msg || "레포트를 불러오지 못했습니다.")}</div>`;
+                }
+
+                async open() {
+                    this.show();
+                    await this.load();
+                }
+
+                async load() {
+                    if (this.isLoading) return;
+                    this.isLoading = true;
+                    this.setLoading();
+
+                    const csrf = document.getElementById("csrf_token")?.value || "";
+                    if (!csrf) {
+                        this.isLoading = false;
+                        this.setError("보안 토큰이 없습니다. 새로고침 후 다시 시도해주세요.");
+                        return;
+                    }
+
+                    try {
+                        const fd = new FormData();
+                        fd.append("action", "view_report");
+                        fd.append("csrf_token", csrf);
+
+                        const res = await fetch(location.pathname, {
+                            method: "POST",
+                            body: fd,
+                            credentials: "same-origin",
+                        });
+
+                        const data = await res.json().catch(() => null);
+                        if (!data) {
+                            this.setError("응답을 처리할 수 없습니다.");
+                            return;
+                        }
+
+                        if (data.csrf_token) {
+                            const tokenEl = document.getElementById("csrf_token");
+                            if (tokenEl) tokenEl.value = data.csrf_token;
+                        }
+
+                        if (!data.ok) {
+                            this.setError(data.message || "레포트 생성에 실패했습니다.");
+                            return;
+                        }
+
+                        if (this.titleEl) {
+                            this.titleEl.textContent = String(data.title || "최근 3개월 통계 레포트");
+                        }
+                        if (this.contentEl) {
+                            this.contentEl.innerHTML = String(data.html || "");
+                        }
+                    } catch (e) {
+                        this.setError("네트워크 오류가 발생했습니다.");
+                    } finally {
+                        this.isLoading = false;
+                    }
+                }
+            }
+
+            const reportViewController = new ReportViewController();
 
             // ====== 토큰 TTL 표시(발급 상태만) ======
 
@@ -4994,6 +5517,7 @@ function admin_name_by_id(int $id): string
 
             <span class="hint" id="saveHint">${locked ? "※ 종결된 건(admin)은 처리상태/대출결과 변경이 불가합니다. 메모 저장은 가능합니다." : "※ 변경 후 저장 버튼을 눌러야 DB에 반영됩니다."}</span>
             <button class="btn primary" id="reportBtn" type="button">최근 3개월간 통계보기</button>
+            <button class="btn" id="reportViewBtn" type="button">최근 3개월간 레포트 보기</button>
           </div>
         </div>
 
@@ -5079,6 +5603,9 @@ function admin_name_by_id(int $id): string
                     reportBtn.dataset.bound = "1";
                     reportBtn.addEventListener("click", sendThreeMonthReport);
                 }
+
+                const reportViewBtn = document.getElementById("reportViewBtn");
+                reportViewController.bindOpenButton(reportViewBtn);
 
                 const backBtn = document.getElementById("backToListBtn");
                 if (backBtn && backBtn.dataset.bound !== "1") {
@@ -5425,6 +5952,9 @@ function admin_name_by_id(int $id): string
                 initReportBtn.dataset.bound = "1";
                 initReportBtn.addEventListener("click", sendThreeMonthReport);
             }
+
+            const initReportViewBtn = document.getElementById("reportViewBtn");
+            reportViewController.bindOpenButton(initReportViewBtn);
 
             const initBackBtn = document.getElementById("backToListBtn");
             if (initBackBtn && initBackBtn.dataset.bound !== "1") {
