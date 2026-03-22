@@ -1104,6 +1104,10 @@ $timelineApiUrl = build_url(array_merge($baseParams, ['action' => 'timeline_poin
             padding: 14px;
         }
 
+        .loginlog-map-modal[hidden] {
+            display: none !important;
+        }
+
         .loginlog-map-dialog {
             width: min(920px, 100%);
             max-height: 88vh;
@@ -2059,6 +2063,10 @@ $timelineApiUrl = build_url(array_merge($baseParams, ['action' => 'timeline_poin
     if (!modal) {
       return;
     }
+
+    // Always start closed. CSS override on [hidden] is explicitly handled.
+    modal.hidden = true;
+    document.body.classList.remove('loginlog-modal-open');
 
     if (modal.parentNode !== document.body) {
       document.body.appendChild(modal);
