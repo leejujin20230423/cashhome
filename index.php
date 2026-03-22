@@ -64,6 +64,14 @@ const PRIVACY_POLICY_VERSION = 'v1';
 // 호환용(수신자는 mail_sender.php 설정이 우선)
 const CASHHOME_NOTIFY_EMAIL = 'ecashhome@gmail.com';
 
+function env_str(string $key, string $default = ''): string
+{
+  $v = getenv($key);
+  if ($v === false) return $default;
+  $s = trim((string)$v);
+  return $s !== '' ? $s : $default;
+}
+
 // ✅ mail_sender.php 로드 (MailSender 클래스 포함)
 require_once __DIR__ . '/mail_sender.php';
 if (!class_exists('MailSender')) {
@@ -85,6 +93,208 @@ function cashhome_pdo(): PDO
     PDO::ATTR_EMULATE_PREPARES => false,
   ]);
   return $pdo;
+}
+
+/**
+ * 보조 DB(PDO)
+ * 환경변수 모두 설정되어야 활성화됩니다.
+ * - CASHHOME_DB2_HOST
+ * - CASHHOME_DB2_NAME
+ * - CASHHOME_DB2_USER
+ * - CASHHOME_DB2_PASS
+ */
+function cashhome_pdo_secondary(): ?PDO
+{
+  static $initialized = false;
+  static $pdo2 = null;
+
+  if ($initialized) {
+    return $pdo2 instanceof PDO ? $pdo2 : null;
+  }
+  $initialized = true;
+
+  $host = env_str('CASHHOME_DB2_HOST', '');
+  $name = env_str('CASHHOME_DB2_NAME', '');
+  $user = env_str('CASHHOME_DB2_USER', '');
+  $pass = env_str('CASHHOME_DB2_PASS', '');
+
+  if ($host === '' || $name === '' || $user === '') {
+    return null;
+  }
+
+  $dsn = 'mysql:host=' . $host . ';dbname=' . $name . ';charset=utf8mb4';
+  $pdo2 = new PDO($dsn, $user, $pass, [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    PDO::ATTR_EMULATE_PREPARES => false,
+  ]);
+  return $pdo2;
+}
+
+/**
+ * 신청 접수 데이터를 보조 DB에도 복제 저장
+ * - 기본 DB 저장 성공 후 호출
+ * - 보조 DB 미설정이면 true 반환(스킵)
+ * - 보조 DB 실패는 false 반환(기본 DB 성공은 유지)
+ */
+function cashhome_replicate_inquiry_to_secondary(array $inquiryRow, array $consentLogs): bool
+{
+  try {
+    $pdo2 = cashhome_pdo_secondary();
+    if (!$pdo2 instanceof PDO) return true;
+
+    $pdo2->beginTransaction();
+
+    $st = $pdo2->prepare("
+      INSERT INTO cashhome_1000_inquiries (
+        cashhome_1000_id,
+        cashhome_1000_created_at,
+        cashhome_1000_loan_no,
+        cashhome_1000_user_ip,
+        cashhome_1000_user_agent,
+        cashhome_1000_customer_name,
+        cashhome_1000_customer_phone,
+        cashhome_1000_addr_live,
+        cashhome_1000_addr_live_detail,
+        cashhome_1000_addr_resident,
+        cashhome_1000_addr_resident_detail,
+        cashhome_1000_applicant_type,
+        cashhome_1000_loan_period,
+        cashhome_1000_loan_amount,
+        cashhome_1000_loan_purpose,
+        cashhome_1000_bank_name,
+        cashhome_1000_bank_account_holder,
+        cashhome_1000_bank_account_no,
+        cashhome_1000_request_memo,
+        cashhome_1000_company_info,
+        cashhome_1000_agree_privacy,
+        cashhome_1000_privacy_policy_version,
+        cashhome_1000_privacy_agreed_at,
+        cashhome_1000_agree_marketing,
+        cashhome_1000_marketing_agreed_at,
+        cashhome_1000_status
+      ) VALUES (
+        :id,
+        :created_at,
+        :loan_no,
+        :user_ip,
+        :user_agent,
+        :customer_name,
+        :customer_phone,
+        :addr_live,
+        :addr_live_detail,
+        :addr_resident,
+        :addr_resident_detail,
+        :applicant_type,
+        :loan_period,
+        :loan_amount,
+        :loan_purpose,
+        :bank_name,
+        :bank_account_holder,
+        :bank_account_no,
+        :request_memo,
+        :company_info,
+        :agree_privacy,
+        :privacy_policy_version,
+        :privacy_agreed_at,
+        :agree_marketing,
+        :marketing_agreed_at,
+        :status
+      )
+      ON DUPLICATE KEY UPDATE
+        cashhome_1000_created_at = VALUES(cashhome_1000_created_at),
+        cashhome_1000_loan_no = VALUES(cashhome_1000_loan_no),
+        cashhome_1000_user_ip = VALUES(cashhome_1000_user_ip),
+        cashhome_1000_user_agent = VALUES(cashhome_1000_user_agent),
+        cashhome_1000_customer_name = VALUES(cashhome_1000_customer_name),
+        cashhome_1000_customer_phone = VALUES(cashhome_1000_customer_phone),
+        cashhome_1000_addr_live = VALUES(cashhome_1000_addr_live),
+        cashhome_1000_addr_live_detail = VALUES(cashhome_1000_addr_live_detail),
+        cashhome_1000_addr_resident = VALUES(cashhome_1000_addr_resident),
+        cashhome_1000_addr_resident_detail = VALUES(cashhome_1000_addr_resident_detail),
+        cashhome_1000_applicant_type = VALUES(cashhome_1000_applicant_type),
+        cashhome_1000_loan_period = VALUES(cashhome_1000_loan_period),
+        cashhome_1000_loan_amount = VALUES(cashhome_1000_loan_amount),
+        cashhome_1000_loan_purpose = VALUES(cashhome_1000_loan_purpose),
+        cashhome_1000_bank_name = VALUES(cashhome_1000_bank_name),
+        cashhome_1000_bank_account_holder = VALUES(cashhome_1000_bank_account_holder),
+        cashhome_1000_bank_account_no = VALUES(cashhome_1000_bank_account_no),
+        cashhome_1000_request_memo = VALUES(cashhome_1000_request_memo),
+        cashhome_1000_company_info = VALUES(cashhome_1000_company_info),
+        cashhome_1000_agree_privacy = VALUES(cashhome_1000_agree_privacy),
+        cashhome_1000_privacy_policy_version = VALUES(cashhome_1000_privacy_policy_version),
+        cashhome_1000_privacy_agreed_at = VALUES(cashhome_1000_privacy_agreed_at),
+        cashhome_1000_agree_marketing = VALUES(cashhome_1000_agree_marketing),
+        cashhome_1000_marketing_agreed_at = VALUES(cashhome_1000_marketing_agreed_at),
+        cashhome_1000_status = VALUES(cashhome_1000_status)
+    ");
+    $st->execute([
+      ':id' => (int)$inquiryRow['cashhome_1000_id'],
+      ':created_at' => $inquiryRow['cashhome_1000_created_at'],
+      ':loan_no' => $inquiryRow['cashhome_1000_loan_no'],
+      ':user_ip' => $inquiryRow['cashhome_1000_user_ip'],
+      ':user_agent' => $inquiryRow['cashhome_1000_user_agent'],
+      ':customer_name' => $inquiryRow['cashhome_1000_customer_name'],
+      ':customer_phone' => $inquiryRow['cashhome_1000_customer_phone'],
+      ':addr_live' => $inquiryRow['cashhome_1000_addr_live'],
+      ':addr_live_detail' => $inquiryRow['cashhome_1000_addr_live_detail'],
+      ':addr_resident' => $inquiryRow['cashhome_1000_addr_resident'],
+      ':addr_resident_detail' => $inquiryRow['cashhome_1000_addr_resident_detail'],
+      ':applicant_type' => $inquiryRow['cashhome_1000_applicant_type'],
+      ':loan_period' => $inquiryRow['cashhome_1000_loan_period'],
+      ':loan_amount' => $inquiryRow['cashhome_1000_loan_amount'],
+      ':loan_purpose' => $inquiryRow['cashhome_1000_loan_purpose'],
+      ':bank_name' => $inquiryRow['cashhome_1000_bank_name'],
+      ':bank_account_holder' => $inquiryRow['cashhome_1000_bank_account_holder'],
+      ':bank_account_no' => $inquiryRow['cashhome_1000_bank_account_no'],
+      ':request_memo' => $inquiryRow['cashhome_1000_request_memo'],
+      ':company_info' => $inquiryRow['cashhome_1000_company_info'],
+      ':agree_privacy' => (int)$inquiryRow['cashhome_1000_agree_privacy'],
+      ':privacy_policy_version' => $inquiryRow['cashhome_1000_privacy_policy_version'],
+      ':privacy_agreed_at' => $inquiryRow['cashhome_1000_privacy_agreed_at'],
+      ':agree_marketing' => (int)$inquiryRow['cashhome_1000_agree_marketing'],
+      ':marketing_agreed_at' => $inquiryRow['cashhome_1000_marketing_agreed_at'],
+      ':status' => $inquiryRow['cashhome_1000_status'],
+    ]);
+
+    $del = $pdo2->prepare("DELETE FROM cashhome_1100_consent_logs WHERE cashhome_1100_inquiry_id = :id");
+    $del->execute([':id' => (int)$inquiryRow['cashhome_1000_id']]);
+
+    $ins = $pdo2->prepare("
+      INSERT INTO cashhome_1100_consent_logs (
+        cashhome_1100_inquiry_id,
+        cashhome_1100_consent_type,
+        cashhome_1100_consent_version,
+        cashhome_1100_consented,
+        cashhome_1100_user_ip,
+        cashhome_1100_user_agent
+      ) VALUES (
+        :inquiry_id,
+        :consent_type,
+        :consent_version,
+        :consented,
+        :user_ip,
+        :user_agent
+      )
+    ");
+    foreach ($consentLogs as $log) {
+      $ins->execute([
+        ':inquiry_id' => (int)$inquiryRow['cashhome_1000_id'],
+        ':consent_type' => (string)$log['consent_type'],
+        ':consent_version' => (string)$log['consent_version'],
+        ':consented' => (int)$log['consented'],
+        ':user_ip' => $log['user_ip'],
+        ':user_agent' => $log['user_agent'],
+      ]);
+    }
+
+    $pdo2->commit();
+    return true;
+  } catch (Throwable $e) {
+    if (isset($pdo2) && $pdo2 instanceof PDO && $pdo2->inTransaction()) $pdo2->rollBack();
+    error_log('[DB2 REPL ERROR] ' . $e->getMessage());
+    return false;
+  }
 }
 
 /**
@@ -468,6 +678,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
         $amount = $clean['amount'];
         $purpose = $clean['purpose'];
         $memo = $clean['memo'];
+        $uaShort = $ua !== '' ? mb_substr($ua, 0, 255) : null;
         $bankName = $clean['bank_name'];
         $bankAccountHolder = $clean['bank_account_holder'];
         $bankAccountNo = $clean['bank_account_no'];
@@ -495,6 +706,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
 
         $newId = 0;
         $loanNo = '';
+        $secondaryInquiryRow = [];
+        $secondaryConsentLogs = [];
 
         try {
           $pdo = cashhome_pdo();
@@ -577,7 +790,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
                 ':loan_no' => $loanNo,
 
                 ':user_ip' => $ip !== '' ? $ip : null,
-                ':user_agent' => $ua !== '' ? mb_substr($ua, 0, 255) : null,
+                ':user_agent' => $uaShort,
                 ':customer_name' => $name,
                 ':customer_phone' => $phone,
 
@@ -621,6 +834,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
             throw new RuntimeException('insert failed: newId=0');
           }
 
+          $secondaryInquiryRow = [
+            'cashhome_1000_id' => $newId,
+            'cashhome_1000_created_at' => $ts,
+            'cashhome_1000_loan_no' => $loanNo,
+            'cashhome_1000_user_ip' => $ip !== '' ? $ip : null,
+            'cashhome_1000_user_agent' => $uaShort,
+            'cashhome_1000_customer_name' => $name,
+            'cashhome_1000_customer_phone' => $phone,
+            'cashhome_1000_addr_live' => $addrLive !== '' ? $addrLive : null,
+            'cashhome_1000_addr_live_detail' => $addrLiveDetail !== '' ? $addrLiveDetail : null,
+            'cashhome_1000_addr_resident' => $addrResident !== '' ? $addrResident : null,
+            'cashhome_1000_addr_resident_detail' => $addrResidentDetail !== '' ? $addrResidentDetail : null,
+            'cashhome_1000_applicant_type' => $applicantType !== '' ? $applicantType : null,
+            'cashhome_1000_loan_period' => $loanPeriod > 0 ? $loanPeriod : null,
+            'cashhome_1000_loan_amount' => $amount,
+            'cashhome_1000_loan_purpose' => $purpose,
+            'cashhome_1000_bank_name' => $bankName,
+            'cashhome_1000_bank_account_holder' => $bankAccountHolder,
+            'cashhome_1000_bank_account_no' => $bankAccountNo,
+            'cashhome_1000_request_memo' => $memo !== '' ? $memo : null,
+            'cashhome_1000_company_info' => $companyInfoText !== '' ? $companyInfoText : null,
+            'cashhome_1000_agree_privacy' => 1,
+            'cashhome_1000_privacy_policy_version' => $privacyVer,
+            'cashhome_1000_privacy_agreed_at' => $privacyAt !== '' ? $privacyAt : $ts,
+            'cashhome_1000_agree_marketing' => 1,
+            'cashhome_1000_marketing_agreed_at' => $marketingAt !== '' ? $marketingAt : $ts,
+            'cashhome_1000_status' => 'new',
+          ];
+
           // ✅ 업로드 흐름에서 쓰려고 세션에 접수번호/대출번호 저장
           $_SESSION['cashhome_last_inquiry_id'] = $newId;
           $_SESSION['cashhome_last_loan_no'] = $loanNo;
@@ -649,7 +891,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
             ':consent_version' => $privacyVer,
             ':consented' => 1,
             ':user_ip' => $ip !== '' ? $ip : null,
-            ':user_agent' => $ua !== '' ? mb_substr($ua, 0, 255) : null,
+            ':user_agent' => $uaShort,
           ]);
 
           $stmtP->execute([
@@ -658,10 +900,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
             ':consent_version' => $marketingVer !== '' ? $marketingVer : $privacyVer,
             ':consented' => 1,
             ':user_ip' => $ip !== '' ? $ip : null,
-            ':user_agent' => $ua !== '' ? mb_substr($ua, 0, 255) : null,
+            ':user_agent' => $uaShort,
           ]);
 
+          $secondaryConsentLogs = [
+            [
+              'consent_type' => 'privacy',
+              'consent_version' => $privacyVer,
+              'consented' => 1,
+              'user_ip' => $ip !== '' ? $ip : null,
+              'user_agent' => $uaShort,
+            ],
+            [
+              'consent_type' => 'marketing',
+              'consent_version' => $marketingVer !== '' ? $marketingVer : $privacyVer,
+              'consented' => 1,
+              'user_ip' => $ip !== '' ? $ip : null,
+              'user_agent' => $uaShort,
+            ],
+          ];
+
           $pdo->commit();
+
+          $replicated = cashhome_replicate_inquiry_to_secondary($secondaryInquiryRow, $secondaryConsentLogs);
+          if (!$replicated) {
+            error_log('[DB2] replicate failed. inquiry_id=' . $newId);
+          }
         } catch (Throwable $e) {
           if (isset($pdo) && $pdo instanceof PDO && $pdo->inTransaction()) $pdo->rollBack();
           error_log('[DB/CONSENT INSERT ERROR] ' . $e->getMessage());

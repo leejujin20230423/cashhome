@@ -3623,6 +3623,7 @@ function admin_name_by_id(int $id): string
                             <?php endif; ?>
                         </span>
                     </div>
+                    <a class="btn" href="admin_loginlog.php">로그인위치</a>
                     <a class="btn" href="./">GO TO HOME</a>
                     <a class="btn" href="admin_inquiries.php?logout=1">LOG OUT</a>
                 </div>

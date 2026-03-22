@@ -33,6 +33,30 @@ function h(string $s): string
 }
 
 /**
+ * DB 설정
+ */
+const DB_HOST = '49.247.29.76';
+const DB_NAME = 'cashhome';
+const DB_USER = 'lokia';
+const DB_PASS = 'lokia0528**';
+
+function cashhome_pdo(): PDO
+{
+  static $pdo = null;
+  if ($pdo instanceof PDO) return $pdo;
+
+  $dsn = 'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4';
+  $pdo = new PDO($dsn, DB_USER, DB_PASS, [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    PDO::ATTR_EMULATE_PREPARES => false,
+  ]);
+  return $pdo;
+}
+
+require_once __DIR__ . '/admin_login_log_common.php';
+
+/**
  * ✅ admin 비밀번호 해시 (기존 해시 = admin용)
  * 생성 방법(서버/로컬에서 1회):
  * php -r "echo password_hash('원하는비번', PASSWORD_DEFAULT), PHP_EOL;"
@@ -113,6 +137,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // ✅ admin_inquiries.php가 요구하는 세션키(중요!)
     $_SESSION['cashhome_admin_username'] = $role; // 'admin' 또는 'master'
+
+    // 로그인 성공 이력 저장(실패해도 로그인 자체는 진행)
+    try {
+      $pdo = cashhome_pdo();
+      cashhome_admin_loginlog_insert($pdo, [
+        'admin_db_id' => (int)$_SESSION['cashhome_admin_id'],
+        'admin_role' => (string)$role,
+        'admin_username' => (string)$role,
+        'login_status' => 'SUCCESS',
+      ]);
+    } catch (Throwable $e) {
+      error_log('[admin_login log] ' . $e->getMessage());
+    }
 
     // 세션 하이재킹 방지(로그인 시 세션ID 재발급)
     session_regenerate_id(true);
@@ -250,7 +287,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="card">
       <h2 style="margin:0 0 12px;">관리자 로그인</h2>
 
-      <form method="post" action="">
+      <form method="post" action="" id="adminLoginForm">
         <label for="role">관리자 선택</label>
         <select id="role" name="role" required>
           <option value="admin" <?= $selectedRole === 'admin' ? 'selected' : '' ?>>admin</option>
@@ -259,6 +296,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <label for="password" style="margin-top:12px;">비밀번호</label>
         <input id="password" name="password" type="password" autocomplete="current-password" required />
+
+        <!-- 로그인 시 브라우저 위치정보 전달 -->
+        <input type="hidden" name="login_geo_latitude" id="login_geo_latitude" value="">
+        <input type="hidden" name="login_geo_longitude" id="login_geo_longitude" value="">
+        <input type="hidden" name="login_geo_accuracy" id="login_geo_accuracy" value="">
+        <input type="hidden" name="login_geo_status" id="login_geo_status" value="">
+        <input type="hidden" name="login_geo_source" id="login_geo_source" value="">
 
         <button type="submit">접수이력 보기</button>
 
@@ -324,6 +368,74 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       deferredPrompt = null;
       installBtn.style.display = "none";
     });
+
+    // 로그인 위치 수집 (권한 거부/미지원 시에도 로그인은 정상 진행)
+    (function setupLoginGeoCapture() {
+      const form = document.getElementById("adminLoginForm");
+      if (!form) return;
+
+      const latInput = document.getElementById("login_geo_latitude");
+      const lngInput = document.getElementById("login_geo_longitude");
+      const accInput = document.getElementById("login_geo_accuracy");
+      const statusInput = document.getElementById("login_geo_status");
+      const sourceInput = document.getElementById("login_geo_source");
+
+      function setStatus(status, source) {
+        if (statusInput) statusInput.value = String(status || "");
+        if (sourceInput) sourceInput.value = String(source || "");
+      }
+
+      function setCoords(position) {
+        if (!position || !position.coords) return;
+        if (latInput) latInput.value = String(position.coords.latitude ?? "");
+        if (lngInput) lngInput.value = String(position.coords.longitude ?? "");
+        if (accInput) accInput.value = String(position.coords.accuracy ?? "");
+        setStatus("ok", "browser_geolocation");
+      }
+
+      function setGeoError(error) {
+        const code = error && typeof error.code === "number" ? error.code : 0;
+        if (code === 1) setStatus("denied", "browser_geolocation");
+        else if (code === 2) setStatus("unavailable", "browser_geolocation");
+        else if (code === 3) setStatus("timeout", "browser_geolocation");
+        else setStatus("error", "browser_geolocation");
+      }
+
+      async function collectGeoOnce() {
+        if (!("geolocation" in navigator)) {
+          setStatus("unsupported", "browser_geolocation");
+          return;
+        }
+
+        await new Promise((resolve) => {
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              setCoords(position);
+              resolve();
+            },
+            (error) => {
+              setGeoError(error);
+              resolve();
+            },
+            {
+              enableHighAccuracy: true,
+              timeout: 2500,
+              maximumAge: 60000
+            }
+          );
+        });
+      }
+
+      // 페이지 진입 시 선 수집(캐시 최대 활용)
+      collectGeoOnce();
+
+      // 제출 직전 한번 더 시도
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await collectGeoOnce();
+        form.submit();
+      });
+    })();
   </script>
 </body>
 
