@@ -518,7 +518,7 @@ if (!is_loginlog_gate_authed()) {
     <div class="wrap">
         <div class="card">
             <h2>로그인 위치이력 접근</h2>
-            <p class="hint">비밀번호 형식: <b>오늘날짜(MMDD) + 12341234</b><br>예: 3월 22일이면 <b>032212341234</b></p>
+             <p 12341234</b><br>예: 3월 22일이면 <b></b></p>
             <form method="post" action="admin_loginlog.php" autocomplete="off">
                 <label for="gate_password">접근 비밀번호</label>
                 <input id="gate_password" name="gate_password" type="password" inputmode="numeric" required autofocus>
