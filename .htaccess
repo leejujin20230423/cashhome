@@ -1,0 +1,8 @@
+RewriteEngine On
+
+# Keep old bookmarks and the homepage button on the shared cash login.
+RewriteRule ^admin_login\.php$ https://cash.bizstore.co.kr/e_cash_loan_0_login/e_cash_loan_0_login_View/e_cash_loan_0_login_View.php [R=303,L,QSD]
+
+# Existing history links now open the migrated screen after cash authentication.
+RewriteRule ^admin_inquiries\.php$ https://cash.bizstore.co.kr/inquiry-history/ [R=303,L]
+RewriteRule ^admin_loginlog\.php$ https://cash.bizstore.co.kr/inquiry-history/admin_loginlog.php [R=303,L]
