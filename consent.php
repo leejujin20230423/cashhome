@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 session_start();
+date_default_timezone_set('Asia/Seoul');
 header('X-Frame-Options: SAMEORIGIN');
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: strict-origin-when-cross-origin');
@@ -14,7 +15,7 @@ function h(string $s): string
 }
 
 // index.php와 동일하게 맞추세요
-const PRIVACY_POLICY_VERSION = 'v1';
+const PRIVACY_POLICY_VERSION = 'customer-v2-20261104';
 const MARKETING_POLICY_VERSION = 'v1'; // (표시용. 실제 저장은 index.php 구조에 맞춰 version 하나로 통일)
 
 // ✅ index.php에서 입력 검증 통과하면 세션에 draft 저장됨
@@ -61,6 +62,13 @@ if (empty($_SESSION['cashhome_consent']) || !is_array($_SESSION['cashhome_consen
   $_SESSION['cashhome_consent']['marketing_at'] = $_SESSION['cashhome_consent']['marketing_at'] ?? null;
   $_SESSION['cashhome_consent']['privacy_ver'] = (string)($_SESSION['cashhome_consent']['privacy_ver'] ?? PRIVACY_POLICY_VERSION);
   $_SESSION['cashhome_consent']['marketing_ver'] = (string)($_SESSION['cashhome_consent']['marketing_ver'] ?? MARKETING_POLICY_VERSION);
+}
+
+if (($_SESSION['cashhome_consent']['privacy_ver'] ?? '') !== PRIVACY_POLICY_VERSION) {
+  $_SESSION['cashhome_consent']['privacy'] = 0;
+  $_SESSION['cashhome_consent']['privacy_at'] = null;
+  $_SESSION['cashhome_consent']['privacy_ver'] = PRIVACY_POLICY_VERSION;
+  $_SESSION['cashhome_consent']['version'] = PRIVACY_POLICY_VERSION;
 }
 
 $error = '';
@@ -168,14 +176,14 @@ $privacyText = <<<TXT
 
 1. 개인정보의 처리 목적
 회사는 다음의 목적을 위하여 개인정보를 처리합니다. 처리한 개인정보는 다음 목적 이외의 용도로는 이용되지 않으며, 이용 목적이 변경되는 경우에는 관련 법령에 따라 별도의 동의를 받는 등 필요한 조치를 이행합니다.
-(1) 상담 신청 접수 및 상담 진행: 상담 신청 접수 확인, 연락, 상담 내용 확인 및 응대, 민원 처리, 분쟁 대응
+(1) 고객 등록 및 대출상담 신청 접수: 고객정보 등록·동일 고객 확인, 접수 확인과 연락, 상담 내용 확인 및 응대, 민원 처리, 분쟁 대응
 (2) 서비스 운영 및 보안: 비정상 이용 탐지, 부정 이용 방지, 서비스 안정성 확보, 접속기록 등 보안 로그 관리
 
 2. 처리하는 개인정보의 항목
 회사는 최소한의 개인정보만을 수집합니다.
 (1) 상담 신청 시
-- 필수: 성함, 연락처(전화번호), 개인정보 동의 여부 및 동의 일시/버전
-- 선택: 희망금액, 자금용도, 요청사항(상담내용)
+- 필수: 성함, 연락처(전화번호), 생년월일, 직업, 실거주지·등본 주소지 및 상세주소, 희망금액, 대출기간, 자금용도, 신청 유형, 은행명·예금주·계좌번호, 개인정보 동의 여부 및 동의 일시/버전
+- 선택: 요청사항(상담내용), 유형별 추가정보
 (2) 자동 수집 항목
 - 접속 IP, 접속 일시, User-Agent(브라우저 정보), 서비스 이용기록(접속기록/로그)
 

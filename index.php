@@ -28,6 +28,8 @@ session_set_cookie_params([
 ]);
 
 session_start();
+date_default_timezone_set('Asia/Seoul');
+header('Cache-Control: no-store');
 if (!isset($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 
 if (!empty($_GET['reset'])) {
@@ -55,11 +57,12 @@ function h(string $s): string
 }
 
 const DB_HOST = '49.247.29.76';
-const DB_NAME = 'cashhome';
+// 고객·대출접수는 cash 관리자와 같은 DB를 사용합니다.
+const DB_NAME = 'E_cash_loan';
 const DB_USER = 'lokia';
 const DB_PASS = 'lokia0528**';
 
-const PRIVACY_POLICY_VERSION = 'v1';
+const PRIVACY_POLICY_VERSION = 'customer-v2-20261104';
 
 // 호환용(수신자는 mail_sender.php 설정이 우선)
 const CASHHOME_NOTIFY_EMAIL = 'ecashhome@gmail.com';
@@ -143,7 +146,14 @@ function cashhome_replicate_inquiry_to_secondary(array $inquiryRow, array $conse
     $pdo2 = cashhome_pdo_secondary();
     if (!$pdo2 instanceof PDO) return true;
 
-    $pdo2->beginTransaction();
+    $secondaryLock = null;
+    $secondaryCustomerId = null;
+    if (!empty($inquiryRow['cashhome_1000_customer_birth_date'])) {
+      $customerInput = ['name'=>$inquiryRow['cashhome_1000_customer_name'], 'phone'=>$inquiryRow['cashhome_1000_customer_phone'], 'birth_date'=>$inquiryRow['cashhome_1000_customer_birth_date'], 'job'=>$inquiryRow['cashhome_1000_customer_job']];
+      foreach (['addr_live','addr_live_detail','addr_resident','addr_resident_detail'] as $key) $customerInput[$key]=$inquiryRow['cashhome_1000_'.$key]??'';
+      $secondaryLock = cashhome_customer_begin($pdo2, $customerInput);
+      $secondaryCustomerId = cashhome_customer_register($pdo2, $customerInput, (string)$inquiryRow['cashhome_1000_created_at']);
+    } else { $pdo2->beginTransaction(); }
 
     $st = $pdo2->prepare("
       INSERT INTO cashhome_1000_inquiries (
@@ -257,6 +267,7 @@ function cashhome_replicate_inquiry_to_secondary(array $inquiryRow, array $conse
       ':status' => $inquiryRow['cashhome_1000_status'],
     ]);
 
+    if ($secondaryCustomerId !== null) cashhome_customer_attach($pdo2, (int)$inquiryRow['cashhome_1000_id'], $secondaryCustomerId, $customerInput);
     $del = $pdo2->prepare("DELETE FROM cashhome_1100_consent_logs WHERE cashhome_1100_inquiry_id = :id");
     $del->execute([':id' => (int)$inquiryRow['cashhome_1000_id']]);
 
@@ -289,10 +300,12 @@ function cashhome_replicate_inquiry_to_secondary(array $inquiryRow, array $conse
     }
 
     $pdo2->commit();
+    cashhome_customer_unlock($pdo2, $secondaryLock);
     return true;
   } catch (Throwable $e) {
     if (isset($pdo2) && $pdo2 instanceof PDO && $pdo2->inTransaction()) $pdo2->rollBack();
-    error_log('[DB2 REPL ERROR] ' . $e->getMessage());
+    if (isset($pdo2) && $pdo2 instanceof PDO) cashhome_customer_unlock($pdo2, $secondaryLock ?? null);
+    error_log('[DB2 REPL ERROR] ' . get_class($e) . ' code=' . $e->getCode());
     return false;
   }
 }
@@ -352,6 +365,7 @@ function cashhome_consent_ok(): bool
   $privacy = !empty($c['privacy']);
   $marketing = !empty($c['marketing']);
   if (!$privacy || !$marketing) return false;
+  if (($c['privacy_ver'] ?? $c['version'] ?? '') !== PRIVACY_POLICY_VERSION) return false;
 
   $hasPrivacyAt = !empty($c['privacy_at']);
   $hasMarketingAt = !empty($c['marketing_at']);
@@ -374,6 +388,8 @@ function delivery_company_info_template(): string
 /**
  * ✅ 입력 검증
  */
+require_once __DIR__.'/lib/CustomerRegistration.php';
+
 function validate_inquiry_input(array $in): array
 {
   $name = trim((string)($in['name'] ?? ''));
@@ -396,7 +412,8 @@ function validate_inquiry_input(array $in): array
 
   $loanPeriodRaw = trim((string)($in['loan_period'] ?? ''));
 
-  $errors = [];
+  [$customerErrors, $customer] = cashhome_customer_input($in);
+  $errors = $customerErrors;
 
   if ($name === '' || mb_strlen($name) < 2) $errors[] = '성함을 2자 이상 입력해주세요.';
 
@@ -456,7 +473,9 @@ function validate_inquiry_input(array $in): array
 
   return [$errors, [
     'name' => $name,
-    'phone' => $phone,
+    'phone' => $customer['phone'],
+    'birth_date' => $customer['birth_date'],
+    'job' => $customer['job'],
     'amount' => $amount,
     'purpose' => $purpose,
     'memo' => $memo,
@@ -535,6 +554,8 @@ $draft = $_SESSION['cashhome_inquiry_draft'] ?? null;
 $old = [
   'name' => is_array($draft) ? (string)($draft['name'] ?? '') : '',
   'phone' => is_array($draft) ? (string)($draft['phone'] ?? '') : '',
+  'birth_date' => is_array($draft) ? (string)($draft['birth_date'] ?? '') : '',
+  'job' => is_array($draft) ? (string)($draft['job'] ?? '') : '',
   'amount' => is_array($draft) ? (string)($draft['amount'] ?? '') : '',
   'purpose' => is_array($draft) ? (string)($draft['purpose'] ?? '선택 안함') : '선택 안함',
   'memo' => is_array($draft) ? (string)($draft['memo'] ?? '') : '',
@@ -644,6 +665,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
       $old = [
         'name' => $clean['name'],
         'phone' => $clean['phone'],
+        'birth_date' => $clean['birth_date'],
+        'job' => $clean['job'],
         'amount' => $clean['amount'],
         'purpose' => $clean['purpose'] !== '' ? $clean['purpose'] : '선택 안함',
         'memo' => $clean['memo'],
@@ -711,7 +734,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
 
         try {
           $pdo = cashhome_pdo();
-          $pdo->beginTransaction();
+          $customerLock = cashhome_customer_begin($pdo, $clean);
+          $customerId = cashhome_customer_register($pdo, $clean, $ts);
 
           $stmt = $pdo->prepare("
             INSERT INTO cashhome_1000_inquiries (
@@ -834,6 +858,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
             throw new RuntimeException('insert failed: newId=0');
           }
 
+          cashhome_customer_attach($pdo, $newId, $customerId, $clean);
+
           $secondaryInquiryRow = [
             'cashhome_1000_id' => $newId,
             'cashhome_1000_created_at' => $ts,
@@ -842,6 +868,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
             'cashhome_1000_user_agent' => $uaShort,
             'cashhome_1000_customer_name' => $name,
             'cashhome_1000_customer_phone' => $phone,
+            'cashhome_1000_customer_birth_date' => $clean['birth_date'],
+            'cashhome_1000_customer_job' => $clean['job'],
             'cashhome_1000_addr_live' => $addrLive !== '' ? $addrLive : null,
             'cashhome_1000_addr_live_detail' => $addrLiveDetail !== '' ? $addrLiveDetail : null,
             'cashhome_1000_addr_resident' => $addrResident !== '' ? $addrResident : null,
@@ -863,9 +891,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
             'cashhome_1000_status' => 'new',
           ];
 
-          // ✅ 업로드 흐름에서 쓰려고 세션에 접수번호/대출번호 저장
-          $_SESSION['cashhome_last_inquiry_id'] = $newId;
-          $_SESSION['cashhome_last_loan_no'] = $loanNo;
 
           $stmtP = $pdo->prepare("
             INSERT INTO cashhome_1100_consent_logs (
@@ -921,6 +946,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
           ];
 
           $pdo->commit();
+          cashhome_customer_unlock($pdo, $customerLock);
+          $customerLock = null;
+          $_SESSION['cashhome_last_inquiry_id'] = $newId;
+          $_SESSION['cashhome_last_loan_no'] = $loanNo;
 
           $replicated = cashhome_replicate_inquiry_to_secondary($secondaryInquiryRow, $secondaryConsentLogs);
           if (!$replicated) {
@@ -928,8 +957,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
           }
         } catch (Throwable $e) {
           if (isset($pdo) && $pdo instanceof PDO && $pdo->inTransaction()) $pdo->rollBack();
-          error_log('[DB/CONSENT INSERT ERROR] ' . $e->getMessage());
-          $errorMsg = '일시적인 오류로 접수가 완료되지 않았습니다. 잠시 후 다시 시도해주세요.';
+          if (isset($pdo) && $pdo instanceof PDO) cashhome_customer_unlock($pdo, $customerLock ?? null);
+          error_log('[DB/CONSENT INSERT ERROR] ' . get_class($e) . ' code=' . $e->getCode());
+          $errorMsg = $e instanceof InvalidArgumentException ? $e->getMessage() : '일시적인 오류로 접수가 완료되지 않았습니다. 잠시 후 다시 시도해주세요.';
         }
 
         // ✅ DB 저장 성공 후 “상담 접수” 메일 발송 (MailSender)
@@ -961,6 +991,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') !=
           $old = [
             'name' => '',
             'phone' => '',
+            'birth_date' => '',
+            'job' => '',
             'amount' => '',
             'purpose' => '선택 안함',
             'memo' => '',
@@ -2314,6 +2346,18 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
 
             <div class="row">
               <div>
+                <label for="birth_date">생년월일 (필수)</label>
+                <input id="birth_date" name="birth_date" type="date" required min="1900-01-01" max="<?= h(date('Y-m-d')) ?>" autocomplete="bday" value="<?= h($old['birth_date']) ?>" />
+              </div>
+              <div>
+                <label for="job">직업 (필수)</label>
+                <input id="job" name="job" type="text" required maxlength="50" placeholder="예: 회사원, 자영업, 배달업, 무직" value="<?= h($old['job']) ?>" />
+              </div>
+            </div>
+            <p class="hint">입력한 기본정보로 고객 등록과 대출접수를 함께 진행합니다. 고객정보와 필수 신청정보를 모두 입력해 주세요.</p>
+
+            <div class="row">
+              <div>
                 <label for="addr_live">주소 (실거주지) (필수)</label>
                 <div style="display:flex; gap:8px;">
                   <input id="addr_live" name="addr_live" type="text" placeholder="주소찾기를 눌러 입력" required
@@ -2598,8 +2642,8 @@ $lastLoanNo = (string)($_SESSION['cashhome_last_loan_no'] ?? '');
         <div>
           <div class="pill">개인정보처리방침(요약)</div>
           <p style="margin:10px 0 0; color:var(--muted); font-size:12px;">
-            • 수집항목: 성함, 연락처, 주소(실거주/등본), 상세주소, 희망금액, 예상대출기간, 자금용도, 상담내용(선택), 접속기록(보안 목적)<br />
-            • 이용목적: 상담 및 안내, 민원 대응, 서비스 품질 개선<br />
+            • 수집항목: 성함, 연락처, 생년월일, 직업, 주소(실거주/등본)와 상세주소, 은행·예금주·계좌번호, 희망금액, 예상대출기간, 자금용도, 신청 유형, 상담내용(선택), 접속기록(보안 목적)<br />
+            • 이용목적: 고객 등록·동일 고객 확인, 대출상담 접수 및 안내, 민원 대응<br />
             • 보관기간: 목적 달성 후 지체 없이 파기(관계법령에 따른 보관은 예외)<br />
             • 문의: <?= h($companyInfo['대표전화']) ?>
           </p>
@@ -2936,6 +2980,7 @@ index.php 스크립트 (전체)
     async function preConsentAndGo() {
       if (!form) return;
 
+      if (!form.reportValidity()) return;
       const fd = new FormData(form);
       fd.append('action', 'preconsent');
 
@@ -2981,6 +3026,7 @@ index.php 스크립트 (전체)
     }
 
     form?.addEventListener('submit', (e) => {
+      if (!form.reportValidity()) { e.preventDefault(); return; }
       const consentOk = <?= $consentOk ? 'true' : 'false' ?>;
       if (!consentOk) {
         e.preventDefault();
